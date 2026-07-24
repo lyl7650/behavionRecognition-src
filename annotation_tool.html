@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Behavior Annotation Tool</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #667085;
+      --border: #d7dde5;
+      --accent: #2563eb;
+      --resting: #4caf50;
+      --active-state: #ff9800;
+      --eating: #e53935;
+      --drinking: #1e88e5;
+      --ambiguous: #64748b;
+      --unknown: #9e9e9e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+    }
+
+    header {
+      padding: 18px 24px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(460px, 1fr) minmax(420px, 520px);
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    input[type="file"],
+    input[type="text"],
+    input[type="number"],
+    select {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 9px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    input[type="text"] {
+      min-width: 260px;
+      flex: 1;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    button {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.danger {
+      border-color: #ef4444;
+      color: #b42318;
+    }
+
+    button.state {
+      min-width: 92px;
+      border-left-width: 8px;
+    }
+
+    button.state.active {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    button[data-state="RESTING"] {
+      border-left-color: var(--resting);
+    }
+
+    button[data-state="ACTIVE"] {
+      border-left-color: var(--active-state);
+    }
+
+    button[data-state="EATING"] {
+      border-left-color: var(--eating);
+    }
+
+    button[data-state="DRINKING"] {
+      border-left-color: var(--drinking);
+    }
+
+    button[data-state="AMBIGUOUS"] {
+      border-left-color: var(--ambiguous);
+    }
+
+    video {
+      width: 100%;
+      max-height: calc(100vh - 260px);
+      background: #111827;
+      border-radius: 8px;
+    }
+
+    .time-readout {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fbfcfe;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .timeline {
+      position: relative;
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #eef2f7;
+    }
+
+    .timeline-segment {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+    }
+
+    .playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #111827;
+      pointer-events: none;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--border);
+      padding: 7px 5px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    td input[type="number"] {
+      width: 92px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    td select {
+      width: 118px;
+    }
+
+    .notice {
+      min-height: 22px;
+      color: #b42318;
+      font-weight: 600;
+    }
+
+    .hint {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .path-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .compact-input {
+      width: 92px;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      video {
+        max-height: 55vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Behavior Annotation Tool</h1>
+  </header>
+
+  <main>
+    <section class="panel stack">
+      <div class="row">
+        <label for="videoFile">Video</label>
+        <input id="videoFile" type="file" accept="video/*">
+      </div>
+
+      <video id="video" controls></video>
+
+      <input id="seek" type="range" min="0" max="0" step="1" value="0" aria-label="seek timeline">
+
+      <div class="time-readout">
+        <div class="stat">
+          <label>Current</label>
+          <strong id="currentMs">0 ms</strong>
+        </div>
+        <div class="stat">
+          <label>Duration</label>
+          <strong id="durationMs">0 ms</strong>
+        </div>
+        <div class="stat">
+          <label>Segment Start</label>
+          <strong id="segmentStartMs">0 ms</strong>
+        </div>
+      </div>
+
+      <div class="row">
+        <button type="button" data-step="-1000">-1000 ms</button>
+        <button type="button" data-step="-500">-500 ms</button>
+        <button type="button" data-step="-100">-100 ms</button>
+        <button type="button" data-step="100">+100 ms</button>
+        <button type="button" data-step="500">+500 ms</button>
+        <button type="button" data-step="1000">+1000 ms</button>
+      </div>
+
+      <div class="row">
+        <label for="frameFps">Frame FPS</label>
+        <input id="frameFps" class="compact-input" type="number" min="1" max="240" step="0.001" value="30">
+        <button id="detectFps" type="button">Auto FPS</button>
+        <span class="path-note">Frame <strong id="currentFrame">0</strong></span>
+        <button type="button" data-frame-step="-10">-10f</button>
+        <button type="button" data-frame-step="-1">-1f</button>
+        <button type="button" data-frame-step="1">+1f</button>
+        <button type="button" data-frame-step="10">+10f</button>
+        <button id="snapFrame" type="button">Snap Frame</button>
+      </div>
+
+      <div class="timeline" id="timeline">
+        <div class="playhead" id="playhead"></div>
+      </div>
+    </section>
+
+    <section class="panel stack">
+      <div class="row">
+        <label for="videoPath">video_path</label>
+        <input id="videoPath" type="text" placeholder="test-v7.mp4">
+      </div>
+
+      <div class="row" id="stateButtons">
+        <button type="button" class="state active" data-state="RESTING">RESTING</button>
+        <button type="button" class="state" data-state="ACTIVE">ACTIVE</button>
+        <button type="button" class="state" data-state="EATING">EATING</button>
+        <button type="button" class="state" data-state="DRINKING">DRINKING</button>
+        <button type="button" class="state" data-state="AMBIGUOUS">AMBIGUOUS</button>
+      </div>
+
+      <div class="row">
+        <button id="setStart" type="button">Set Start</button>
+        <button id="addSegment" type="button" class="primary">Add Segment</button>
+        <button id="undoSegment" type="button">Undo</button>
+        <button id="clearSegments" type="button" class="danger">Clear</button>
+      </div>
+
+      <div class="row">
+        <label for="annotationFile">Existing annotation optional</label>
+        <input id="annotationFile" type="file" accept="application/json,.json">
+        <button id="exportJson" type="button" class="primary">Export JSON</button>
+      </div>
+
+      <div class="row">
+        <button id="chooseOutputDir" type="button">Output Folder</button>
+        <span class="path-note" id="outputDirLabel">Downloads fallback</span>
+      </div>
+
+      <div class="notice" id="notice"></div>
+
+      <div class="hint">
+        New annotation: choose a video, add segments, then export JSON. Import is only for continuing an existing annotation.
+        Leave long occlusion or no-target time unmarked; use AMBIGUOUS only for RESTING/ACTIVE uncertainty.
+        Hotkeys: Space play/pause, A/D seek -/+500ms, Left/Right frame -/+1, Shift+Left/Right -/+10, R resting, M active, E eating, K drinking, U ambiguous. Auto FPS briefly plays the video to estimate frame rate.
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Start ms</th>
+            <th>End ms</th>
+            <th>State</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="segmentsBody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const STATES = ["RESTING", "ACTIVE", "EATING", "DRINKING", "AMBIGUOUS"];
+    const STATE_COLORS = {
+      RESTING: "#4caf50",
+      ACTIVE: "#ff9800",
+      EATING: "#e53935",
+      DRINKING: "#1e88e5",
+      AMBIGUOUS: "#64748b",
+      UNKNOWN: "#9e9e9e"
+    };
+
+    const video = document.getElementById("video");
+    const videoFile = document.getElementById("videoFile");
+    const annotationFile = document.getElementById("annotationFile");
+    const videoPath = document.getElementById("videoPath");
+    const seek = document.getElementById("seek");
+    const currentMsEl = document.getElementById("currentMs");
+    const durationMsEl = document.getElementById("durationMs");
+    const segmentStartMsEl = document.getElementById("segmentStartMs");
+    const frameFps = document.getElementById("frameFps");
+    const currentFrameEl = document.getElementById("currentFrame");
+    const timeline = document.getElementById("timeline");
+    const playhead = document.getElementById("playhead");
+    const segmentsBody = document.getElementById("segmentsBody");
+    const notice = document.getElementById("notice");
+    const outputDirLabel = document.getElementById("outputDirLabel");
+
+    let selectedState = "RESTING";
+    let segmentStartMs = 0;
+    let segments = [];
+    let objectUrl = null;
+    let outputDirectoryHandle = null;
+
+    function msFromSeconds(seconds) {
+      if (!Number.isFinite(seconds)) return 0;
+      return Math.max(0, Math.round(seconds * 1000));
+    }
+
+    function secondsFromMs(ms) {
+      return Math.max(0, Number(ms || 0) / 1000);
+    }
+
+    function currentMs() {
+      return msFromSeconds(video.currentTime);
+    }
+
+    function durationMs() {
+      return msFromSeconds(video.duration);
+    }
+
+    function frameFpsValue() {
+      const value = Number(frameFps.value);
+      return Number.isFinite(value) && value > 0 ? value : 30;
+    }
+
+    function frameDurationMs() {
+      return 1000 / frameFpsValue();
+    }
+
+    function currentFrameIndex() {
+      return Math.max(0, Math.round(currentMs() / frameDurationMs()));
+    }
+
+    function seekFrameStep(stepFrames) {
+      const nextFrame = Math.max(0, currentFrameIndex() + Number(stepFrames || 0));
+      seekTo(Math.round(nextFrame * frameDurationMs()));
+    }
+
+    function snapToNearestFrame() {
+      seekTo(Math.round(currentFrameIndex() * frameDurationMs()));
+    }
+
+    function waitForVideoFrame() {
+      return new Promise((resolve, reject) => {
+        if (!video.requestVideoFrameCallback) {
+          reject(new Error("requestVideoFrameCallback is not supported"));
+          return;
+        }
+        video.requestVideoFrameCallback((_now, metadata) => resolve(metadata));
+      });
+    }
+
+    async function detectFrameFps() {
+      if (!video.src || durationMs() <= 0) {
+        setNotice("Choose a video before Auto FPS.");
+        return;
+      }
+      if (!video.requestVideoFrameCallback) {
+        setNotice("Auto FPS is not supported by this browser. Set Frame FPS manually.");
+        return;
+      }
+
+      const originalTime = video.currentTime;
+      const wasPaused = video.paused;
+      const originalMuted = video.muted;
+      const originalPlaybackRate = video.playbackRate;
+      const samples = [];
+
+      try {
+        video.muted = true;
+        video.playbackRate = 1;
+        if (durationMs() - currentMs() < 1500) {
+          video.currentTime = Math.max(0, Number(video.duration || 0) - 2);
+        }
+        await video.play();
+        const startedAt = performance.now();
+        while (performance.now() - startedAt < 1200 && samples.length < 90) {
+          const metadata = await waitForVideoFrame();
+          samples.push(metadata);
+          if (samples.length >= 2) {
+            const first = samples[0];
+            const last = samples[samples.length - 1];
+            const mediaDelta = Number(last.mediaTime) - Number(first.mediaTime);
+            const frameDelta = Number(last.presentedFrames) - Number(first.presentedFrames);
+            if (mediaDelta >= 0.8 && frameDelta >= 2) break;
+          }
+        }
+
+        const first = samples[0];
+        const last = samples[samples.length - 1];
+        const mediaDelta = first && last ? Number(last.mediaTime) - Number(first.mediaTime) : 0;
+        const frameDelta = first && last ? Number(last.presentedFrames) - Number(first.presentedFrames) : 0;
+        if (mediaDelta <= 0 || frameDelta <= 0) {
+          throw new Error("not enough decoded frames");
+        }
+        const estimatedFps = frameDelta / mediaDelta;
+        frameFps.value = estimatedFps.toFixed(3);
+        setNotice(`Estimated FPS: ${frameFps.value}`);
+      } catch (error) {
+        setNotice(`Auto FPS failed: ${error.message}. Set Frame FPS manually.`);
+      } finally {
+        video.playbackRate = originalPlaybackRate;
+        video.muted = originalMuted;
+        if (wasPaused) video.pause();
+        video.currentTime = originalTime;
+        updateReadout();
+      }
+    }
+
+    function setNotice(message) {
+      notice.textContent = message || "";
+    }
+
+    function setSelectedState(state) {
+      selectedState = state;
+      document.querySelectorAll("button.state").forEach((button) => {
+        button.classList.toggle("active", button.dataset.state === state);
+      });
+    }
+
+    function seekTo(ms) {
+      const duration = durationMs();
+      const next = duration > 0 ? Math.min(Math.max(ms, 0), duration) : Math.max(ms, 0);
+      video.currentTime = secondsFromMs(next);
+      updateReadout();
+    }
+
+    function updateReadout() {
+      const now = currentMs();
+      const total = durationMs();
+      currentMsEl.textContent = `${now} ms`;
+      durationMsEl.textContent = `${total} ms`;
+      segmentStartMsEl.textContent = `${segmentStartMs} ms`;
+      currentFrameEl.textContent = String(currentFrameIndex());
+      seek.max = String(total);
+      seek.value = String(Math.min(now, total || now));
+      playhead.style.left = total > 0 ? `${Math.min(100, (now / total) * 100)}%` : "0%";
+      renderTimeline();
+    }
+
+    function validateSegments() {
+      const normalized = segments
+        .map((segment) => ({
+          start_ms: Math.round(Number(segment.start_ms)),
+          end_ms: Math.round(Number(segment.end_ms)),
+          state: String(segment.state || "UNKNOWN").toUpperCase()
+        }))
+        .sort((a, b) => a.start_ms - b.start_ms || a.end_ms - b.end_ms);
+
+      for (let index = 0; index < normalized.length; index += 1) {
+        const segment = normalized[index];
+        if (!STATES.includes(segment.state)) {
+          return { ok: false, message: `Segment ${index + 1}: invalid state ${segment.state}` };
+        }
+        if (!Number.isFinite(segment.start_ms) || !Number.isFinite(segment.end_ms)) {
+          return { ok: false, message: `Segment ${index + 1}: start/end must be numbers` };
+        }
+        if (segment.end_ms <= segment.start_ms) {
+          return { ok: false, message: `Segment ${index + 1}: end_ms must be greater than start_ms` };
+        }
+        if (index > 0 && segment.start_ms < normalized[index - 1].end_ms) {
+          return { ok: false, message: `Segment ${index + 1}: overlaps previous segment` };
+        }
+      }
+
+      segments = normalized;
+      return { ok: true, message: "" };
+    }
+
+    function renderSegmentsTable() {
+      segmentsBody.innerHTML = "";
+      segments.forEach((segment, index) => {
+        const row = document.createElement("tr");
+
+        const indexCell = document.createElement("td");
+        indexCell.textContent = String(index + 1);
+        row.appendChild(indexCell);
+
+        const startCell = document.createElement("td");
+        const startInput = document.createElement("input");
+        startInput.type = "number";
+        startInput.step = "1";
+        startInput.value = String(segment.start_ms);
+        startInput.addEventListener("change", () => {
+          segments[index].start_ms = Number(startInput.value);
+          refreshAfterEdit();
+        });
+        startCell.appendChild(startInput);
+        row.appendChild(startCell);
+
+        const endCell = document.createElement("td");
+        const endInput = document.createElement("input");
+        endInput.type = "number";
+        endInput.step = "1";
+        endInput.value = String(segment.end_ms);
+        endInput.addEventListener("change", () => {
+          segments[index].end_ms = Number(endInput.value);
+          refreshAfterEdit();
+        });
+        endCell.appendChild(endInput);
+        row.appendChild(endCell);
+
+        const stateCell = document.createElement("td");
+        const stateSelect = document.createElement("select");
+        STATES.forEach((state) => {
+          const option = document.createElement("option");
+          option.value = state;
+          option.textContent = state;
+          option.selected = segment.state === state;
+          stateSelect.appendChild(option);
+        });
+        stateSelect.addEventListener("change", () => {
+          segments[index].state = stateSelect.value;
+          refreshAfterEdit();
+        });
+        stateCell.appendChild(stateSelect);
+        row.appendChild(stateCell);
+
+        const actionCell = document.createElement("td");
+        const jumpButton = document.createElement("button");
+        jumpButton.type = "button";
+        jumpButton.textContent = "Jump";
+        jumpButton.addEventListener("click", () => seekTo(segment.start_ms));
+        actionCell.appendChild(jumpButton);
+
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "danger";
+        removeButton.textContent = "Remove";
+        removeButton.addEventListener("click", () => {
+          segments.splice(index, 1);
+          refreshAfterEdit();
+        });
+        actionCell.appendChild(removeButton);
+        row.appendChild(actionCell);
+
+        segmentsBody.appendChild(row);
+      });
+    }
+
+    function refreshAfterEdit() {
+      const result = validateSegments();
+      setNotice(result.message);
+      renderSegmentsTable();
+      renderTimeline();
+      if (segments.length > 0) {
+        segmentStartMs = segments[segments.length - 1].end_ms;
+      }
+      updateReadout();
+    }
+
+    function renderTimeline() {
+      const total = durationMs();
+      timeline.querySelectorAll(".timeline-segment").forEach((node) => node.remove());
+      if (total <= 0) return;
+
+      segments.forEach((segment) => {
+        const start = Math.max(0, Math.min(total, segment.start_ms));
+        const end = Math.max(0, Math.min(total, segment.end_ms));
+        if (end <= start) return;
+        const block = document.createElement("div");
+        block.className = "timeline-segment";
+        block.title = `${segment.state}: ${segment.start_ms}-${segment.end_ms} ms`;
+        block.style.left = `${(start / total) * 100}%`;
+        block.style.width = `${((end - start) / total) * 100}%`;
+        block.style.background = STATE_COLORS[segment.state] || STATE_COLORS.UNKNOWN;
+        timeline.insertBefore(block, playhead);
+      });
+    }
+
+    function addSegment() {
+      const endMs = currentMs();
+      if (endMs <= segmentStartMs) {
+        setNotice("Current time must be greater than segment start.");
+        return;
+      }
+      segments.push({
+        start_ms: segmentStartMs,
+        end_ms: endMs,
+        state: selectedState
+      });
+      const result = validateSegments();
+      if (!result.ok) {
+        segments.pop();
+        setNotice(result.message);
+        return;
+      }
+      segmentStartMs = endMs;
+      setNotice("");
+      renderSegmentsTable();
+      updateReadout();
+    }
+
+    function annotationFileName() {
+      const baseName = (videoPath.value.trim() || "annotation").replace(/\.[^.]+$/, "");
+      return `${baseName}.annotations.json`;
+    }
+
+    function annotationPayload() {
+      return {
+        schema: "behavior_eval_annotations_v1",
+        video_path: videoPath.value.trim() || "video.mp4",
+        time_unit: "ms",
+        segments
+      };
+    }
+
+    function downloadAnnotation(filename, jsonText) {
+      const blob = new Blob([jsonText], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setNotice(`Exported ${filename}. Check your browser downloads folder.`);
+    }
+
+    async function chooseOutputDirectory() {
+      if (!window.showDirectoryPicker) {
+        outputDirectoryHandle = null;
+        outputDirLabel.textContent = "Downloads fallback";
+        setNotice("This browser does not support direct folder export. Export will use downloads.");
+        return;
+      }
+      try {
+        outputDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        outputDirLabel.textContent = outputDirectoryHandle.name || "Selected folder";
+        setNotice(`Output folder selected: ${outputDirLabel.textContent}`);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          setNotice(`Output folder failed: ${error.message}`);
+        }
+      }
+    }
+
+    async function exportAnnotation() {
+      const result = validateSegments();
+      if (!result.ok) {
+        setNotice(result.message);
+        return;
+      }
+      const filename = annotationFileName();
+      const jsonText = JSON.stringify(annotationPayload(), null, 2);
+
+      if (outputDirectoryHandle) {
+        try {
+          const fileHandle = await outputDirectoryHandle.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(jsonText);
+          await writable.close();
+          setNotice(`Saved ${filename} to ${outputDirLabel.textContent}.`);
+          return;
+        } catch (error) {
+          setNotice(`Folder save failed: ${error.message}. Downloading instead.`);
+        }
+      }
+
+      downloadAnnotation(filename, jsonText);
+    }
+
+    function importAnnotation(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const payload = JSON.parse(String(reader.result || "{}"));
+          if (payload.schema !== "behavior_eval_annotations_v1") {
+            throw new Error("schema must be behavior_eval_annotations_v1");
+          }
+          if (payload.time_unit !== "ms") {
+            throw new Error('time_unit must be "ms"');
+          }
+          if (!Array.isArray(payload.segments)) {
+            throw new Error("segments must be an array");
+          }
+          videoPath.value = payload.video_path || videoPath.value;
+          segments = payload.segments.map((segment) => ({
+            start_ms: Math.round(Number(segment.start_ms)),
+            end_ms: Math.round(Number(segment.end_ms)),
+            state: String(segment.state || "UNKNOWN").toUpperCase()
+          }));
+          const result = validateSegments();
+          if (!result.ok) throw new Error(result.message);
+          segmentStartMs = segments.length > 0 ? segments[segments.length - 1].end_ms : 0;
+          setNotice("");
+          renderSegmentsTable();
+          updateReadout();
+        } catch (error) {
+          setNotice(`Import failed: ${error.message}`);
+        }
+      };
+      reader.readAsText(file, "utf-8");
+    }
+
+    videoFile.addEventListener("change", () => {
+      const file = videoFile.files && videoFile.files[0];
+      if (!file) return;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file);
+      video.src = objectUrl;
+      videoPath.value = file.name;
+      segments = [];
+      segmentStartMs = 0;
+      annotationFile.value = "";
+      setNotice("");
+      renderSegmentsTable();
+      updateReadout();
+    });
+
+    annotationFile.addEventListener("change", () => {
+      const file = annotationFile.files && annotationFile.files[0];
+      if (file) importAnnotation(file);
+    });
+
+    video.addEventListener("loadedmetadata", updateReadout);
+    video.addEventListener("timeupdate", updateReadout);
+    video.addEventListener("durationchange", updateReadout);
+
+    seek.addEventListener("input", () => seekTo(Number(seek.value)));
+    frameFps.addEventListener("change", updateReadout);
+    frameFps.addEventListener("input", updateReadout);
+
+    document.querySelectorAll("button[data-step]").forEach((button) => {
+      button.addEventListener("click", () => seekTo(currentMs() + Number(button.dataset.step)));
+    });
+
+    document.querySelectorAll("button[data-frame-step]").forEach((button) => {
+      button.addEventListener("click", () => seekFrameStep(Number(button.dataset.frameStep)));
+    });
+
+    document.getElementById("snapFrame").addEventListener("click", snapToNearestFrame);
+    document.getElementById("detectFps").addEventListener("click", detectFrameFps);
+
+    document.getElementById("stateButtons").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-state]");
+      if (button) setSelectedState(button.dataset.state);
+    });
+
+    document.getElementById("setStart").addEventListener("click", () => {
+      segmentStartMs = currentMs();
+      updateReadout();
+      setNotice("");
+    });
+
+    document.getElementById("addSegment").addEventListener("click", addSegment);
+
+    document.getElementById("undoSegment").addEventListener("click", () => {
+      const removed = segments.pop();
+      segmentStartMs = removed ? removed.start_ms : 0;
+      setNotice("");
+      renderSegmentsTable();
+      updateReadout();
+    });
+
+    document.getElementById("clearSegments").addEventListener("click", () => {
+      if (!confirm("Clear all segments?")) return;
+      segments = [];
+      segmentStartMs = 0;
+      setNotice("");
+      renderSegmentsTable();
+      updateReadout();
+    });
+
+    document.getElementById("chooseOutputDir").addEventListener("click", chooseOutputDirectory);
+    document.getElementById("exportJson").addEventListener("click", () => {
+      exportAnnotation();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      const key = event.key.toLowerCase();
+      if (key === " ") {
+        event.preventDefault();
+        if (video.paused) video.play();
+        else video.pause();
+      } else if (key === "a") {
+        event.preventDefault();
+        seekTo(currentMs() - 500);
+      } else if (key === "d") {
+        event.preventDefault();
+        seekTo(currentMs() + 500);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        seekFrameStep(event.shiftKey ? -10 : -1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        seekFrameStep(event.shiftKey ? 10 : 1);
+      } else if (key === "r") {
+        setSelectedState("RESTING");
+      } else if (key === "m") {
+        setSelectedState("ACTIVE");
+      } else if (key === "e") {
+        setSelectedState("EATING");
+      } else if (key === "k") {
+        setSelectedState("DRINKING");
+      } else if (key === "u") {
+        setSelectedState("AMBIGUOUS");
+      }
+    });
+
+    updateReadout();
+  </script>
+</body>
+</html>

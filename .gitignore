@@ -1,0 +1,26 @@
+# Generated datasets, checkpoints, and run artifacts
+dataset/
+outputs/
+checkpoints/
+logs/
+test-tmp/
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor settings
+.vscode/
+
+# Model weights and large video assets, wherever they appear
+*.pth
+*.pt
+*.onnx
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Generated review state
+**/.autopresort/

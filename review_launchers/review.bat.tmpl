@@ -1,0 +1,14 @@
+@echo off
+REM ============================================================
+REM  auto_presort REVIEW (standalone, no conda / no GPU needed)
+REM  Double-click to open the browser review page.
+REM ============================================================
+cd /d "%~dp0"
+echo Starting review server...
+python app\auto_presort_review.py --dir data
+echo.
+if errorlevel 1 (
+    echo  [ERROR] Could not start. Is Python 3.8+ installed and on PATH?
+    echo  Install from https://www.python.org/downloads/ and tick "Add to PATH".
+)
+pause

@@ -1,0 +1,9 @@
+#!/bin/bash
+# ============================================================
+#  auto_presort REVIEW (standalone, no conda / no GPU needed)
+#  Double-click to open the browser review page.
+#  首次若双击无反应,右键→打开,或先在终端运行: chmod +x review.command
+# ============================================================
+cd "$(dirname "$0")"
+echo "Starting review server..."
+python3 app/auto_presort_review.py --dir data

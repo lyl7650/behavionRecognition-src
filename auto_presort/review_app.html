@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>auto_presort review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0d0f11; --bg2:#14171a; --panel:#15181c; --panel-hi:#1c2026;
+    --line:#262b31; --fg:#d6dae0; --fg-dim:#8a929c;
+    --accent:#f5a524; --accent-dim:#c47f12; --accent-glow:rgba(245,165,36,.28);
+    --sel:#1d2733; --sel-line:#2f6feb; --ok:#3fb950; --danger:#f0553a;
+    --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --sans:"Sora", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#2b3138; border-radius:6px; border:2px solid var(--panel); }
+  ::-webkit-scrollbar-thumb:hover { background:#3a424b; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  body { margin:0; display:flex; height:100vh; overflow:hidden;
+         background:
+           radial-gradient(1200px 600px at 78% -8%, rgba(245,165,36,.06), transparent 60%),
+           radial-gradient(900px 500px at 0% 100%, rgba(47,111,235,.05), transparent 55%),
+           var(--bg);
+         color:var(--fg); font:14px/1.5 var(--sans); -webkit-font-smoothing:antialiased; }
+
+  /* ── Sidebar ── */
+  #sidebar { width:312px; background:linear-gradient(180deg, var(--bg2), var(--panel));
+             border-right:1px solid var(--line); overflow-y:auto; padding:14px 12px;
+             flex-shrink:0; }
+  #sidebar h3 { margin:2px 4px 14px; font-size:12px; font-weight:600; letter-spacing:.18em;
+                text-transform:uppercase; color:var(--fg-dim);
+                display:flex; align-items:center; gap:8px; }
+  #sidebar h3::before { content:""; width:8px; height:8px; border-radius:2px;
+                        background:var(--accent); box-shadow:0 0 10px var(--accent-glow); }
+  .vitem { padding:9px 10px; border-radius:9px; cursor:pointer; margin-bottom:5px;
+           display:flex; align-items:center; gap:8px; border:1px solid transparent;
+           transition:background .15s, border-color .15s, transform .06s; }
+  .vitem:hover { background:var(--panel-hi); border-color:var(--line); }
+  .vitem:active { transform:translateX(1px); }
+  .vitem.active { background:linear-gradient(90deg, rgba(245,165,36,.14), rgba(245,165,36,.03));
+                  border-color:rgba(245,165,36,.4);
+                  box-shadow:inset 3px 0 0 var(--accent); }
+  .vitem .name { flex:1; min-width:0; overflow-wrap:anywhere; font-size:12.5px;
+                 font-family:var(--mono); color:var(--fg); }
+  .badge { flex-shrink:0; white-space:nowrap; font-family:var(--mono); font-size:11px;
+           color:var(--fg-dim); }
+  #vfilter { display:flex; gap:6px; margin:0 4px 12px; }
+  .fbtn { flex:1; padding:6px 8px; font-size:12px; font-weight:600; border-radius:8px;
+          background:var(--panel-hi); border:1px solid var(--line); color:var(--fg-dim);
+          cursor:pointer; transition:background .15s, border-color .15s, color .15s, transform .06s;
+          display:flex; align-items:center; justify-content:center; gap:6px; }
+  .fbtn:hover { background:#232830; border-color:#39414a; color:var(--fg); }
+  .fbtn:active { transform:translateY(1px); }
+  .fbtn.active { background:linear-gradient(180deg, rgba(245,165,36,.16), rgba(245,165,36,.04));
+                 border-color:rgba(245,165,36,.45); color:var(--accent); }
+  .fcount { font-family:var(--mono); font-size:11px; padding:0 5px; border-radius:6px;
+            background:rgba(255,255,255,.06); color:inherit; }
+
+  /* ── Main ── */
+  #main { flex:1; padding:22px 26px; display:flex; flex-direction:column;
+          min-width:0; overflow-y:auto; }
+  #videowrap { position:relative; width:100%; line-height:0; }
+  video { width:100%; max-height:55vh; background:#000; border-radius:12px;
+          border:1px solid var(--line);
+          box-shadow:0 18px 44px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.02) inset; }
+  /* box overlay: sits exactly over the video element; never intercepts clicks */
+  #boxcanvas { position:absolute; left:0; top:0; width:100%; height:100%;
+               pointer-events:none; border-radius:12px; }
+
+  /* seekbar and timeline are both full-width children of #main → strictly equal length/aligned */
+  #seekbar { position:relative; height:8px; background:var(--panel-hi); border-radius:5px;
+             margin-top:14px; cursor:pointer; border:1px solid var(--line); flex-shrink:0; }
+  #seekfill { position:absolute; left:0; top:0; bottom:0; width:0;
+              background:linear-gradient(90deg, var(--accent-dim), var(--accent));
+              border-radius:5px; pointer-events:none;
+              box-shadow:0 0 10px var(--accent-glow); }
+  #timeline { position:relative; height:60px; flex-shrink:0;
+              background:
+                repeating-linear-gradient(90deg, transparent 0, transparent 9.5%, rgba(255,255,255,.03) 9.5%, rgba(255,255,255,.03) calc(9.5% + 1px)),
+                var(--panel-hi);
+              border-radius:10px; margin-top:8px; user-select:none;
+              border:1px solid var(--line); box-shadow:inset 0 2px 8px rgba(0,0,0,.4); }
+  .seg { position:absolute; top:6px; bottom:6px; border-radius:6px; opacity:.94;
+         min-width:6px;
+         cursor:pointer; overflow:hidden; font-size:11px; font-weight:600; color:#fff;
+         font-family:var(--mono); letter-spacing:.02em; text-shadow:0 1px 2px rgba(0,0,0,.7);
+         display:flex; align-items:center; justify-content:center;
+         box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.25);
+         transition:opacity .12s, box-shadow .12s, transform .06s; }
+  .seg:hover { opacity:1; box-shadow:0 4px 14px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.3); }
+  .seg.selected { outline:2px solid #fff; outline-offset:1px; z-index:3;
+                  box-shadow:0 6px 18px rgba(0,0,0,.55); }
+  .handle { position:absolute; top:0; bottom:0; width:9px; cursor:ew-resize; }
+  .handle.l { left:0; } .handle.r { right:0; }
+  .seg:hover .handle::after { content:""; position:absolute; top:50%; left:50%;
+         transform:translate(-50%,-50%); width:2px; height:46%;
+         background:rgba(13,15,17,.5); border-radius:1px; }
+  #cursor { position:absolute; top:-2px; bottom:-2px; width:2px; background:#fff;
+            pointer-events:none; box-shadow:0 0 8px rgba(255,255,255,.7); z-index:4; }
+
+  #legend { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .chip { display:inline-flex; align-items:center; padding:3px 12px; border-radius:20px;
+          font-size:12px; font-weight:600; color:#fff; font-family:var(--mono);
+          text-shadow:0 1px 2px rgba(0,0,0,.6);
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.25); }
+  .chip.clickable { cursor:pointer; opacity:.62;
+                    transition:opacity .15s, transform .06s, box-shadow .15s; }
+  .chip.clickable:hover { opacity:.9; transform:translateY(-1px); }
+  .chip.active { opacity:1; outline:2px solid #fff; outline-offset:1px;
+                 box-shadow:0 0 12px rgba(255,255,255,.25), inset 0 1px 0 rgba(255,255,255,.3); }
+
+  /* Instructions (collapsible) */
+  .gapinfo { font-size:12.5px; color:var(--fg-dim); margin-top:12px;
+             background:var(--panel); border:1px solid var(--line);
+             border-radius:10px; overflow:hidden; line-height:1.6; }
+  .gapinfo > summary { cursor:pointer; padding:9px 14px; list-style:none;
+             font-weight:600; color:var(--fg); user-select:none;
+             display:flex; align-items:center; gap:8px; }
+  .gapinfo > summary::-webkit-details-marker { display:none; }
+  .gapinfo > summary::before { content:"›"; font-size:16px; color:var(--accent);
+             transition:transform .18s; display:inline-block; }
+  .gapinfo[open] > summary::before { transform:rotate(90deg); }
+  .gapinfo > summary:hover { background:var(--panel-hi); }
+  .gapinfo .body { padding:2px 14px 12px 30px; }
+  .gapinfo b { color:var(--fg); font-weight:600; }
+  .gapinfo kbd { font-family:var(--mono); font-size:11px; background:var(--panel-hi);
+             border:1px solid var(--line); border-bottom-width:2px; border-radius:5px;
+             padding:1px 6px; color:var(--fg); margin:0 1px; }
+
+  /* Control card: groups the confidence slider, edit buttons and color legend into one panel */
+  #controls { margin-top:16px; background:var(--panel); border:1px solid var(--line);
+              border-radius:12px; padding:14px 16px; display:flex; flex-direction:column;
+              gap:13px; }
+  #conflevel { display:flex; align-items:center; gap:12px;
+               font-family:var(--mono); font-size:12px; color:var(--fg-dim); }
+  #status { margin-left:auto; color:var(--fg-dim); font-family:var(--mono); font-size:12px; }
+  #legend { padding-top:12px; border-top:1px solid var(--line); }
+
+  /* Approved dataset card: one solid horizontal bar per action class (length = minutes) */
+  #stats { margin-top:16px; background:var(--panel); border:1px solid var(--line);
+           border-radius:12px; padding:15px 17px; font-family:var(--mono); }
+  #stats .statshead { display:flex; align-items:baseline; justify-content:space-between;
+                      gap:12px; flex-wrap:wrap; margin-bottom:14px;
+                      padding-bottom:11px; border-bottom:1px solid var(--line); }
+  #stats .stitle { font-family:var(--sans); font-size:11px; font-weight:600;
+                   letter-spacing:.18em; text-transform:uppercase; color:var(--fg-dim);
+                   display:flex; align-items:center; gap:8px; }
+  #stats .stitle::before { content:""; width:8px; height:8px; border-radius:2px;
+                           background:var(--accent); box-shadow:0 0 10px var(--accent-glow); }
+  #stats .stotal { font-size:12.5px; color:var(--fg); }
+  #stats .stotal b { color:var(--accent); font-weight:600; }
+  #stats .videos { font-size:11.5px; color:var(--fg-dim); margin-bottom:13px; }
+  .barrow { display:grid; grid-template-columns:78px 1fr 70px; align-items:center;
+            gap:14px; margin:9px 0; }
+  .barrow .blabel { color:var(--fg); font-weight:600; font-size:12.5px; overflow:hidden;
+                    text-overflow:ellipsis; white-space:nowrap; }
+  .bartrack { position:relative; height:14px; background:var(--panel-hi);
+              border-radius:7px; overflow:hidden; }
+  .bar-fill { position:absolute; left:0; top:0; bottom:0; border-radius:7px;
+              min-width:3px; transition:width .35s cubic-bezier(.2,.7,.2,1); }
+  .barrow .bval { text-align:right; color:var(--fg-dim); font-size:11.5px; white-space:nowrap; }
+  .barrow .bval b { color:var(--fg); font-weight:600; }
+  .barrow.empty .blabel { color:var(--fg-dim); }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h3>Videos</h3>
+  <div id="vfilter">
+    <button class="fbtn active" data-f="all">All <span id="fcount-all" class="fcount"></span></button>
+    <button class="fbtn" data-f="labeled">Labeled <span id="fcount-labeled" class="fcount"></span></button>
+    <button class="fbtn" data-f="unapproved">Unapproved <span id="fcount-unapproved" class="fcount"></span></button>
+  </div>
+  <div id="confTierFilter" style="margin:0 4px 12px; padding-top:8px; border-top:1px solid var(--line);">
+    <div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--fg-dim); margin-bottom:8px;">
+      Confidence tier:
+    </div>
+    <label style="display:block; margin-bottom:4px; font-family:var(--mono); font-size:12px; color:var(--fg-dim); cursor:pointer;">
+      <input type="checkbox" class="tierCheck" data-tier="0.9" checked> 0.9-1.0 <span class="tierCount" data-tier="0.9"></span>
+    </label>
+    <label style="display:block; margin-bottom:4px; font-family:var(--mono); font-size:12px; color:var(--fg-dim); cursor:pointer;">
+      <input type="checkbox" class="tierCheck" data-tier="0.8"> 0.8-0.9 <span class="tierCount" data-tier="0.8"></span>
+    </label>
+    <label style="display:block; margin-bottom:4px; font-family:var(--mono); font-size:12px; color:var(--fg-dim); cursor:pointer;">
+      <input type="checkbox" class="tierCheck" data-tier="0.7"> 0.7-0.8 <span class="tierCount" data-tier="0.7"></span>
+    </label>
+    <label style="display:block; margin-bottom:4px; font-family:var(--mono); font-size:12px; color:var(--fg-dim); cursor:pointer;">
+      <input type="checkbox" class="tierCheck" data-tier="0.6"> 0.6-0.7 <span class="tierCount" data-tier="0.6"></span>
+    </label>
+    <label style="display:block; margin-bottom:4px; font-family:var(--mono); font-size:12px; color:var(--fg-dim); cursor:pointer;">
+      <input type="checkbox" class="tierCheck" data-tier="0.5"> 0.5-0.6 <span class="tierCount" data-tier="0.5"></span>
+    </label>
+    <label style="display:block; margin-bottom:4px; font-family:var(--mono); font-size:12px; color:var(--fg-dim); cursor:pointer;">
+      <input type="checkbox" class="tierCheck" data-tier="null"> No model <span class="tierCount" data-tier="null"></span>
+    </label>
+  </div>
+  <div id="vlist"></div>
+</div>
+<div id="main">
+  <div id="videowrap">
+    <video id="player" controls></video>
+    <canvas id="boxcanvas"></canvas>
+  </div>
+  <div id="seekbar"><div id="seekfill"></div></div>
+  <div id="timeline"></div>
+  <div id="controls">
+    <div id="conflevel">
+      <span>Confidence ≥</span>
+      <input id="confSlider" type="range" min="0" max="4" step="1" value="4"
+             style="flex:1; max-width:320px;">
+      <span id="confVal" style="color:var(--accent); font-weight:600; min-width:2.5em;">0.9</span>
+      <span id="confSegCount"></span>
+      <button id="boxToggle" class="fbtn" style="flex:0 0 auto; max-width:none; padding:5px 12px;"
+              title="Toggle YOLO detection boxes (B)">Boxes: off</button>
+      <span id="status"></span>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <details class="gapinfo">
+    <summary>Instructions / Shortcuts</summary>
+    <div class="body">
+      Gray = model uncertain / no animal / boundary zone (no clip generated). <b>Left-click</b> on the timeline to click/drag = scrub playback (does not change labels); <b>Ctrl+Left-click</b> = edit labels: click a colored block to select it, drag its two ends to trim, or drag horizontally over empty space to create a new segment. To <b>relabel</b> the selected segment, click a color in the legend below; that color is also the label used for new segments you draw.<br>
+      Shortcuts: <kbd>Space</kbd> play/pause · <kbd>↑</kbd>/<kbd>↓</kbd> previous/next video · <kbd>Enter</kbd> Approve video · <kbd>Backspace</kbd> delete selected segment · <kbd>B</kbd> toggle YOLO detection boxes · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo last step.
+    </div>
+  </details>
+  <div id="stats"></div>
+</div>
+<script>
+const COLORS = ["#2d7dd2","#97cc04","#eeb902","#f45d01","#9b5de5","#00bbf9"];
+let videos = [], curRel = null, doc = null, selected = -1, classNames = [];
+let curLabel = null; // label picked in the legend: used for new segments and to relabel the selected trim
+const CONF_LEVELS = [0.5, 0.6, 0.7, 0.8, 0.9];
+let confLevelIdx = 4; // 默认 0.9 档
+let filter = "all"; // sidebar filter: all | labeled (has model-generated segments)
+let shownList = []; // rel_paths currently visible in sidebar (post-filter order), for ↑/↓ nav
+let drag = null; // {idx, side}  side: "l" | "r" | "create"
+let createAnchor = null; // press on empty space: {x, t}; no move = click-seek, move = create segment
+let scrub = false;       // Ctrl+drag timeline / drag seekbar: move playback only, don't touch labels
+let undoStack = [], pendingSnap = null; // undo stack (per video)
+let showBoxes = false;                  // YOLO box overlay on/off (toggle button + "B")
+
+const $ = id => document.getElementById(id);
+const player = $("player"), tlEl = $("timeline");
+const boxCanvas = $("boxcanvas"), boxCtx = boxCanvas.getContext("2d");
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+function colorOf(label) {
+  const i = classNames.indexOf(label);
+  return i >= 0 ? COLORS[i % COLORS.length] : "#e63946"; // unknown label = bright red, avoid clash with first class
+}
+function encRel(rel) {  // encode path segment by segment (safe for #/?/% etc.)
+  return rel.split("/").map(encodeURIComponent).join("/");
+}
+function snapNow() { return JSON.stringify(doc.segments); }
+function pushUndo(snap) {
+  undoStack.push(snap);
+  if (undoStack.length > 50) undoStack.shift();
+}
+async function undo() {
+  if (!doc) return;
+  if (!undoStack.length) { $("status").textContent = "Nothing to undo"; return; }
+  doc.segments = JSON.parse(undoStack.pop());
+  selected = -1;
+  await save("save");
+  $("status").textContent = "Undone (approval cleared, please re-Approve)";
+}
+function timeAtX(clientX) {
+  const rect = tlEl.getBoundingClientRect();
+  return Math.max(0, Math.min(doc.duration,
+    (clientX - rect.left) / rect.width * doc.duration));
+}
+async function loadList() {
+  videos = await api("/api/videos");
+  // Update tier counts
+  const tierCounts = {"0.9":0, "0.8":0, "0.7":0, "0.6":0, "0.5":0, "null":0};
+  for (const v of videos) {
+    const tier = v.conf_tier || "null";
+    tierCounts[tier]++;
+  }
+  for (const tier of ["0.9", "0.8", "0.7", "0.6", "0.5", "null"]) {
+    const span = document.querySelector(`.tierCount[data-tier="${tier}"]`);
+    if (span) span.textContent = `(${tierCounts[tier]})`;
+  }
+  $("fcount-all").textContent = videos.length;
+  $("fcount-labeled").textContent = videos.filter(v => v.n_segments > 0).length;
+  $("fcount-unapproved").textContent = videos.filter(v => !v.approved).length;
+  const pred = filter === "labeled" ? (v => v.n_segments > 0)
+             : filter === "unapproved" ? (v => !v.approved)
+             : (() => true);
+  let shown = videos.filter(pred);
+
+  // Apply tier filter (no tier checked → empty list, since includes() over [] is always false)
+  const checkedTiers = Array.from(document.querySelectorAll(".tierCheck:checked"))
+    .map(cb => cb.dataset.tier);
+  shown = shown.filter(v => checkedTiers.includes(v.conf_tier || "null"));
+  shownList = shown.map(v => v.rel_path);   // post-filter order for ↑/↓ navigation
+  const el = $("vlist"); el.innerHTML = "";
+  if (!shown.length) {
+    el.innerHTML = "<div style='padding:12px;color:var(--fg-dim);font-size:12px'>No videos under this filter</div>";
+    loadStats(); return;
+  }
+  for (const v of shown) {
+    const d = document.createElement("div");
+    d.className = "vitem" + (v.rel_path === curRel ? " active" : "");
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = v.rel_path;                    // textContent prevents injection
+    const b = document.createElement("span");
+    b.className = "badge";
+    b.textContent = `${v.approved ? "✅" : "⬜"} ${v.n_segments} seg`;
+    d.appendChild(name);
+    d.appendChild(b);
+    d.onclick = () => loadVideo(v.rel_path);
+    el.appendChild(d);
+  }
+  loadStats();
+}
+async function loadStats() {   // bottom stats card: auto-refreshes on every save/approve
+  const s = await api("/api/stats");
+  const el = $("stats"); el.innerHTML = "";
+
+  // One row per action class (0-minute classes included so cats/dogs show 3 bars, rabbits 4).
+  const classes = (s.class_names && s.class_names.length)
+    ? s.class_names
+    : Object.keys(s.labels);
+  let totalMin = 0, maxMin = 0;
+  const rows = classes.map(c => {
+    const info = s.labels[c] || { duration: 0 };
+    const min = info.duration / 60;
+    totalMin += min;
+    maxMin = Math.max(maxMin, min);
+    return { c, min };
+  });
+
+  const head = document.createElement("div");
+  head.className = "statshead";
+  const title = document.createElement("span");
+  title.className = "stitle";
+  title.textContent = "Approved dataset";
+  const total = document.createElement("span");
+  total.className = "stotal";
+  total.innerHTML = `<b>${classes.length}</b> classes · <b>${totalMin.toFixed(1)}</b> min approved`;
+  head.appendChild(title); head.appendChild(total);
+  el.appendChild(head);
+
+  const videos = document.createElement("div");
+  videos.className = "videos";
+  videos.textContent = `${s.total_videos} videos · ${s.labeled_videos} labeled by model · ${s.approved_videos} approved`;
+  el.appendChild(videos);
+
+  if (!classes.length) {
+    const none = document.createElement("div");
+    none.style.color = "var(--fg-dim)";
+    none.textContent = "No approved segments yet.";
+    el.appendChild(none);
+    return;
+  }
+  for (const { c, min } of rows) {
+    const row = document.createElement("div");
+    row.className = "barrow" + (min <= 0 ? " empty" : "");
+    const label = document.createElement("span");
+    label.className = "blabel";
+    label.textContent = c;                             // textContent prevents injection
+    const track = document.createElement("div");
+    track.className = "bartrack";
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = (maxMin > 0 ? min / maxMin * 100 : 0) + "%";
+    fill.style.background = colorOf(c);
+    track.appendChild(fill);
+    const val = document.createElement("span");
+    val.className = "bval";
+    val.innerHTML = `<b>${min.toFixed(1)}</b> min`;
+    row.appendChild(label); row.appendChild(track); row.appendChild(val);
+    el.appendChild(row);
+  }
+}
+function markChips() {   // highlight the legend chip matching curLabel (the active new-segment label)
+  for (const chip of document.querySelectorAll("#legend .chip.clickable"))
+    chip.classList.toggle("active", chip.dataset.label === curLabel);
+}
+async function pickLabel(c) {
+  // Clicking a legend color: if a trim is selected, relabel it; otherwise just set the
+  // default label used for the next segment you draw. curLabel drives the chip highlight.
+  curLabel = c;
+  markChips();
+  if (selected >= 0 && doc && doc.segments[selected]) {
+    pushUndo(snapNow());
+    doc.segments[selected].label = c;
+    doc.segments[selected].source = "human";
+    await save("save");
+  }
+}
+function renderLegend() {
+  const lg = $("legend"); lg.innerHTML = "";
+  if (!curLabel || !classNames.includes(curLabel)) curLabel = classNames[0] || null;
+  for (const c of classNames) {
+    const chip = document.createElement("span");
+    chip.className = "chip clickable";
+    chip.style.background = colorOf(c);
+    chip.dataset.label = c;
+    chip.textContent = c;                              // textContent prevents injection
+    chip.onclick = () => pickLabel(c);
+    lg.appendChild(chip);
+  }
+  const gap = document.createElement("span");
+  gap.className = "chip"; gap.style.background = "#666"; gap.textContent = "gap";
+  lg.appendChild(gap);
+  markChips();
+}
+async function loadVideo(rel) {
+  curRel = rel; selected = -1; undoStack = []; pendingSnap = null;
+  doc = await api("/api/doc?rel=" + encodeURIComponent(rel));
+  classNames = (doc.meta && doc.meta.class_names) || [];
+  player.src = "/video/" + encRel(rel);
+  drawBoxes();   // clear the previous video's box until the new frame's timeupdate fires
+  renderLegend();
+  $("seekfill").style.width = "0";
+  $("status").textContent = doc.approved ? "Approved ✅" : "";  // reflect the current video's real status
+  if (doc.segment_levels) {
+    // Align the slider to the lowest CHECKED sidebar tier, but never land on an empty tier:
+    // if that tier has no segments for THIS video, drop to the highest tier that actually does.
+    confLevelIdx = tierForVideo();
+    // For a pristine video (not approved, no human edits) load that tier's segments so the
+    // timeline shows trims immediately instead of a possibly-empty default tier.
+    const pristine = !doc.approved && !doc.segments.some(s => s.source === "human");
+    if (pristine) {
+      const key = levelKey();
+      if (doc.segment_levels[key]) {
+        doc.segments = JSON.parse(JSON.stringify(doc.segment_levels[key]));
+      }
+    }
+  }
+  syncConfUI();
+  render(); loadList();
+}
+function lowestCheckedTierIdx() {
+  // Index into CONF_LEVELS of the lowest-valued CHECKED sidebar tier box ("null" box excluded).
+  // Returns current confLevelIdx when no numeric tier is checked (fallback, no change).
+  let lowest = -1;
+  for (const cb of document.querySelectorAll(".tierCheck:checked")) {
+    const t = cb.dataset.tier;
+    if (t === "null") continue;
+    const idx = CONF_LEVELS.indexOf(parseFloat(t));
+    if (idx >= 0 && (lowest < 0 || idx < lowest)) lowest = idx;
+  }
+  return lowest < 0 ? confLevelIdx : lowest;
+}
+function tierForVideo() {
+  // Start at the lowest checked sidebar tier, then step DOWN (toward 0.5, i.e. more segments)
+  // until this video's segment_levels has a non-empty list — so the timeline never opens blank.
+  let idx = lowestCheckedTierIdx();
+  const lv = doc.segment_levels || {};
+  for (let i = idx; i >= 0; i--) {
+    const key = CONF_LEVELS[i].toFixed(1);
+    if (lv[key] && lv[key].length > 0) return i;
+  }
+  return idx;   // no non-empty tier at/below → keep the checked tier (timeline may be empty)
+}
+
+function levelKey() { return CONF_LEVELS[confLevelIdx].toFixed(1); }
+
+function hasLevels() {
+  return doc && doc.segment_levels &&
+         Object.prototype.hasOwnProperty.call(doc.segment_levels, levelKey());
+}
+
+function applyLevel() {
+  // 换档：把当前 segments 推进 undo 栈，再载入该档段（深拷贝，勿污染参考池）。
+  if (!hasLevels()) return;
+  pushUndo(snapNow());
+  doc.segments = JSON.parse(JSON.stringify(doc.segment_levels[levelKey()]));
+  selected = -1;
+  render();
+}
+
+function syncConfUI() {
+  const slider = $("confSlider");
+  const enabled = doc && doc.segment_levels;
+  slider.disabled = !enabled;
+  slider.value = confLevelIdx;   // keep thumb aligned with the active tier
+  $("conflevel").style.opacity = enabled ? "1" : "0.4";
+  $("confVal").textContent = CONF_LEVELS[confLevelIdx].toFixed(1);
+  $("confSegCount").textContent = doc ? `${doc.segments.length} shown` : "";
+}
+
+function render() {
+  tlEl.innerHTML = "<div id='cursor' style='left:0'></div>";
+  const D = doc.duration || 1;
+  doc.segments.forEach((s, i) => {
+    const el = document.createElement("div");
+    el.className = "seg" + (i === selected ? " selected" : "");
+    // Percent-based positioning: independent of the timeline's current pixel width, so segments
+    // render correctly even before the video has loaded and the layout has settled (no F12 needed).
+    el.style.left = (s.start / D * 100) + "%";
+    el.style.width = Math.max(0, (s.end - s.start) / D * 100) + "%";
+    el.style.background = colorOf(s.label);
+    el.title = `${s.label} ${s.start.toFixed(1)}–${s.end.toFixed(1)}s conf=${(s.confidence||0).toFixed(2)}`;
+    el.textContent = `${s.label} ${(s.confidence ?? 0).toFixed(2)}`;
+    el.innerHTML += "<div class='handle l'></div><div class='handle r'></div>";
+    el.onmousedown = e => {
+      if (!e.ctrlKey) {          // no Ctrl: scrub playback, don't touch labels
+        scrub = true; player.currentTime = timeAtX(e.clientX);
+        e.stopPropagation(); e.preventDefault(); return;
+      }
+      if (e.target.classList.contains("handle")) {
+        pendingSnap = snapNow(); // snapshot before trimming, pushed to undo stack on release
+        drag = { idx: i, side: e.target.classList.contains("l") ? "l" : "r" };
+      }
+      else { selected = i; curLabel = s.label; player.currentTime = s.start; render(); markChips(); }
+      e.preventDefault();
+    };
+    tlEl.appendChild(el);
+  });
+}
+tlEl.onmousedown = e => {      // no Ctrl: scrub playback; Ctrl+empty space: click-seek or drag out a new segment
+  if (!e.ctrlKey) {
+    scrub = true; player.currentTime = timeAtX(e.clientX);
+    e.preventDefault(); return;
+  }
+  if (e.target !== tlEl) return;
+  createAnchor = { x: e.clientX, t: timeAtX(e.clientX) };
+  e.preventDefault();
+};
+$("seekbar").onmousedown = e => {  // seekbar: click/drag both scrub
+  if (!doc) return;
+  scrub = true; player.currentTime = timeAtX(e.clientX);
+  e.preventDefault();
+};
+window.onmousemove = e => {
+  if (scrub) { player.currentTime = timeAtX(e.clientX); return; }
+  if (createAnchor && !drag && Math.abs(e.clientX - createAnchor.x) > 4) {
+    // drag past threshold → create a human segment, label from the legend's active label
+    pendingSnap = snapNow();
+    doc.segments.push({ start: createAnchor.t, end: createAnchor.t,
+      label: curLabel || classNames[0] || "?",
+      confidence: 1.0, source: "human" });
+    selected = doc.segments.length - 1;
+    drag = { idx: selected, side: "create", anchor: createAnchor.t };
+    createAnchor = null;
+  }
+  if (!drag) return;
+  const t = timeAtX(e.clientX);
+  const s = doc.segments[drag.idx];
+  if (drag.side === "create") { s.start = Math.min(drag.anchor, t); s.end = Math.max(drag.anchor, t); }
+  else if (drag.side === "l") s.start = Math.min(t, s.end - 0.2);
+  else s.end = Math.max(t, s.start + 0.2);
+  s.source = "human";
+  player.currentTime = t;      // preview follows while trimming, to align with action boundaries
+  render();
+};
+window.onmouseup = async () => {
+  if (scrub) { scrub = false; return; }
+  if (createAnchor) {            // no drag → keep original click-seek behavior
+    player.currentTime = createAnchor.t;
+    createAnchor = null;
+    return;
+  }
+  if (!drag) return;
+  const wasCreate = drag.side === "create";
+  drag = null;
+  if (wasCreate) {
+    const s = doc.segments[doc.segments.length - 1];
+    if (s.end - s.start < 0.2) { // too short = misdrag, discard without saving
+      doc.segments.pop(); selected = -1; pendingSnap = null; render(); return;
+    }
+  }
+  if (pendingSnap) { pushUndo(pendingSnap); pendingSnap = null; }
+  await save("save");           // save right after dragging; save clears approved
+};
+function boxAtTime(t) {
+  // Pick the per-frame box for the current playback time. track_boxes is one entry
+  // per decoded frame (null = animal not detected in that frame → nothing to draw).
+  if (!doc || !doc.track_boxes || !doc.fps) return null;
+  const idx = Math.floor(t * doc.fps);
+  if (idx < 0 || idx >= doc.track_boxes.length) return null;
+  return doc.track_boxes[idx];   // [x1,y1,x2,y2] in ORIGINAL video pixels, or null
+}
+function drawBoxes() {
+  // Overlay is redrawn on every timeupdate. Clear first; bail unless the toggle is on
+  // AND this doc actually carries boxes (old batches won't — degrade silently).
+  const cw = player.clientWidth, ch = player.clientHeight;
+  if (boxCanvas.width !== cw) boxCanvas.width = cw;      // match canvas backing store to displayed size
+  if (boxCanvas.height !== ch) boxCanvas.height = ch;
+  boxCtx.clearRect(0, 0, cw, ch);
+  if (!showBoxes) return;
+  const box = boxAtTime(player.currentTime);
+  if (!box) return;
+  const vw = player.videoWidth, vh = player.videoHeight;
+  if (!vw || !vh) return;
+  // object-fit: contain → video is scaled to fit, centered, with letterbox bars on one axis.
+  const scale = Math.min(cw / vw, ch / vh);
+  const offX = (cw - vw * scale) / 2, offY = (ch - vh * scale) / 2;
+  const x = offX + box[0] * scale, y = offY + box[1] * scale;
+  const w = (box[2] - box[0]) * scale, h = (box[3] - box[1]) * scale;
+  boxCtx.lineWidth = 2;
+  boxCtx.strokeStyle = "#f5a524";       // accent orange, matches the app theme
+  boxCtx.strokeRect(x, y, w, h);
+}
+function setBoxes(on) {
+  showBoxes = on;
+  $("boxToggle").classList.toggle("active", on);
+  $("boxToggle").textContent = "Boxes: " + (on ? "on" : "off");
+  drawBoxes();
+}
+player.ontimeupdate = () => {
+  const D = (doc && doc.duration) || 1;
+  $("cursor").style.left = (player.currentTime / D * 100) + "%";   // percent: width-independent
+  $("seekfill").style.width = (player.currentTime / D * 100) + "%";
+  drawBoxes();
+};
+window.onkeydown = e => {
+  const tag = e.target.tagName || "";
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if (e.code === "Space") {                       // Space: play/pause
+    e.preventDefault();
+    if (player.src) player.paused ? player.play() : player.pause();
+  } else if (e.ctrlKey && e.key.toLowerCase() === "z") {   // Ctrl+Z: undo
+    e.preventDefault(); undo();
+  } else if (e.key === "Enter") {                 // Enter: Approve current video
+    e.preventDefault();
+    approveVideo();
+  } else if (e.key === "Backspace") {             // Backspace: delete selected segment
+    e.preventDefault();
+    deleteSelected();
+  } else if (e.key.toLowerCase() === "b") {       // B: toggle YOLO box overlay
+    e.preventDefault();
+    setBoxes(!showBoxes);
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {  // ↑/↓: prev/next video in filtered list
+    e.preventDefault();
+    if (!shownList.length) return;
+    const cur = shownList.indexOf(curRel);
+    let next;
+    if (e.key === "ArrowDown") next = cur < 0 ? 0 : Math.min(cur + 1, shownList.length - 1);
+    else next = cur < 0 ? 0 : Math.max(cur - 1, 0);
+    if (shownList[next] && shownList[next] !== curRel) loadVideo(shownList[next]);
+  }
+};
+async function save(action, extra) {
+  const payload = Object.assign(
+    { rel_path: curRel, action: action }, extra || {});
+  if (action === "save") payload.segments = doc.segments;
+  doc = await api("/api/doc", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });
+  $("status").textContent = action === "approve" ? "Approved ✅"
+    : "Saved (approval cleared, please re-Approve)";
+  render(); loadList(); syncConfUI();
+}
+async function deleteSelected() {   // Backspace: remove the selected trim
+  if (selected < 0) return;
+  pushUndo(snapNow());
+  doc.segments.splice(selected, 1); selected = -1;
+  await save("save");
+}
+function approveVideo() {            // Enter: approve current video
+  if (!doc) return;
+  pushUndo(snapNow()); save("approve");
+}
+window.onresize = () => { if (doc) render(); drawBoxes(); };
+$("confSlider").oninput = e => {
+  confLevelIdx = parseInt(e.target.value, 10);
+  applyLevel();
+  syncConfUI();
+};
+$("boxToggle").onclick = () => { setBoxes(!showBoxes); $("boxToggle").blur(); };
+for (const btn of document.querySelectorAll(".fbtn")) {
+  btn.onclick = () => {
+    filter = btn.dataset.f;
+    for (const b of document.querySelectorAll(".fbtn")) b.classList.toggle("active", b === btn);
+    loadList();
+  };
+}
+for (const cb of document.querySelectorAll(".tierCheck")) {
+  cb.onchange = () => loadList();
+}
+player.onloadeddata = () => drawBoxes();   // first frame ready → box has correct video dims
+loadList().then(() => videos.length && loadVideo(videos[0].rel_path));
+</script>
+</body>
+</html>

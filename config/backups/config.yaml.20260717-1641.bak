@@ -1,0 +1,119 @@
+mode: normal
+pipeline:
+  output_dir: checkpoints
+  min_box_size: 12
+  frame_skip: 3
+task_configs:
+  normal:
+    dataset_path: dataset/rabbit/2026-07-16/videos
+    class_names:
+    - resting
+    - active
+    - eating
+    - drinking
+    finetune:
+      checkpoint_path: None
+      output_dir: outputs/rabbit/{date}/teacher_finetuned_{date}
+      output_model_name: rabbit_teacher_{date}_ema-videos.pth
+      batch_size: 4
+      accum_steps: 8
+      epochs: 1
+      lr: 4e-5
+      num_workers: 4
+      loss_type: ce
+    recognizer:
+      timm_model: repvit_m1
+      backbone: repvit_m1
+      gru_hidden: auto
+      feature_dim: 0
+      temporal_window: 16
+      use_tsm: false
+      head: gru
+      mamba_d_state: 16
+      mamba_d_conv: 4
+      mamba_expand: 2
+      lstm_hidden: 256
+      lstm_layers: 2
+      imgsz: 224
+      dropout: 0.2
+      augment:
+        scale_min: 0.8
+        scale_max: 1
+        rotate: 15
+        translate: 0.1
+        fliplr: 0.5
+        brightness: 0.15
+        contrast: 0.15
+        reverse: 0.3
+    distillation:
+      output_dir: outputs/rabbit/{date}
+      output_model_name: repvit_best_distilled_{date}.pth
+  abnormal:
+    dataset_path: dataset/abnormal/5_cls
+    class_names:
+    - normal
+    - convulsion
+    - limp
+    - sneeze
+    - vomit
+    finetune:
+      checkpoint_path: outputs/pretrained/k400_85_efficientformer.pth
+      output_dir: outputs/teacher_finetuned_5cls
+      output_model_name: teacher_best_5cls_ema.pth
+      batch_size: 4
+      accum_steps: 8
+      epochs: 35
+      lr: 4e-5
+      num_workers: 4
+    recognizer:
+      timm_model: repvit_m1
+      backbone: repvit_m1
+      gru_hidden: auto
+      feature_dim: 0
+      temporal_window: 16
+      head: gru
+      mamba_d_state: 16
+      mamba_d_conv: 4
+      mamba_expand: 2
+      lstm_hidden: 256
+      lstm_layers: 2
+      imgsz: 224
+      dropout: 0.3
+      augment:
+        scale_min: 0.8
+        scale_max: 1
+        rotate: 10
+        translate: 0.1
+        fliplr: 0.5
+        brightness: 0.1
+        contrast: 0.1
+        reverse: 0.2
+    distillation:
+      teacher_checkpoint: outputs/teacher_finetuned_5cls/teacher_best_5cls_ema.pth
+      output_dir: outputs/distilled_5cls_final
+      output_model_name: repvit_best_distilled_5cls_{date}.pth
+      temperature: 4.0
+      loss_weights:
+        gt: 1.0
+        kd: 8.0
+        feature: 1.0
+      learning_rate: 3e-4
+      batch_size: 16
+      epochs: 1
+      num_workers: 4
+distillation:
+  enabled: true
+  mode_to_use: normal
+  teacher_model: repvit_m1
+  student_backbone: repvit_m1
+  teacher_checkpoint: outputs/rabbit/2026-07-16/teacher_finetuned_2026-07-16/rabbit_teacher_2026-07-16_ema-videos.pth
+  temperature: 4.0
+  loss_weights:
+    gt: 1.0
+    kd: 4.0
+    feature: 1.0
+  learning_rate: 3e-4
+  batch_size: 16
+  epochs: 1
+  num_workers: 4
+  accum_steps: 4
