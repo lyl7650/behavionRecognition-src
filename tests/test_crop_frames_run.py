@@ -17,7 +17,7 @@ def test_frames_run_on_empty_sorted_is_noop(tmp_path):
     cfg = m.default_config()
     cfg["input_base_dir"] = str(src)
     cfg["output_base_dir"] = str(tmp_path / "out")
-    cfg["class_names"] = ["eat", "drink", "other"]
+    cfg["class_names"] = ["eat", "drink", "active", "resting"]
     m.run(cfg, model_factory=lambda dev: object())
 
 
@@ -38,7 +38,7 @@ def test_frames_run_drives_video_calls_process_and_rebalance(tmp_path, monkeypat
     cfg = m.default_config()
     cfg["input_base_dir"] = str(src)
     cfg["output_base_dir"] = str(tmp_path / "out")
-    cfg["class_names"] = ["eat", "drink", "other"]
+    cfg["class_names"] = ["eat", "drink", "active", "resting"]
     m.run(cfg, model_factory=lambda dev: object())
     assert calls["process_video"] == 1
     assert calls["rebalance"] == 1

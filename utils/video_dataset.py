@@ -10,7 +10,6 @@ from torchvision.transforms import v2
 IMAGE_SCAN_EXTENSIONS = (".jpg", ".png", ".jpeg")
 FRAME_LOAD_EXTENSIONS = (".jpg", ".png")
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov")
-NORMAL3_CLASS_NAMES = ("eat", "drink", "other")
 ABNORMAL5_CLASS_NAMES = ("normal", "convulsion", "limp", "sneeze", "vomit")
 
 
@@ -20,8 +19,6 @@ def normalize_class_names(class_names):
 
 def resolve_balance_mode(class_names):
     normalized = normalize_class_names(class_names)
-    if normalized == NORMAL3_CLASS_NAMES:
-        return "normal3"
     if normalized == ABNORMAL5_CLASS_NAMES:
         return "abnormal5"
     return "none"
@@ -156,60 +153,8 @@ class VideoDataset(Dataset):
         if len(raw_samples) == 0:
             return raw_samples
 
-        if self.balance_mode == "normal3":
-            return self._apply_normal3_balance(raw_samples)
         if self.balance_mode == "abnormal5":
             return self._apply_abnormal5_balance(raw_samples)
-        return raw_samples
-
-    def _apply_normal3_balance(self, raw_samples):
-        print("[Dataset] Applying hard balancing (Eat/Drink 1.5x strategy)...")
-
-        samples_by_idx = {i: [] for i in range(len(self.keywords))}
-        for sample in raw_samples:
-            samples_by_idx[sample[1]].append(sample)
-
-        idx_eat = -1
-        idx_drink = -1
-        idx_other = -1
-
-        for idx, kw in enumerate(self.keywords):
-            kw_lower = kw.lower()
-            if "eat" in kw_lower:
-                idx_eat = idx
-            elif "drink" in kw_lower:
-                idx_drink = idx
-            elif "other" in kw_lower:
-                idx_other = idx
-
-        if idx_eat != -1 and idx_drink != -1 and idx_other != -1:
-            n_eat = len(samples_by_idx[idx_eat])
-            n_drink = len(samples_by_idx[idx_drink])
-
-            target_base = max(n_eat, n_drink)
-            if target_base == 0:
-                target_base = 100
-
-            target_other = int(target_base * 1.5)
-            current_other = samples_by_idx[idx_other]
-
-            if len(current_other) > target_other:
-                current_other.sort(key=get_sample_id)
-                samples_by_idx[idx_other] = current_other[-target_other:]
-                print(
-                    f"   [Trim] Truncate Other (keep higher ids): {len(current_other)} -> {target_other}"
-                )
-            else:
-                print(
-                    f"   [Keep] Other count ({len(current_other)}) within limit ({target_other}), no truncation"
-                )
-
-            samples = []
-            for idx in samples_by_idx:
-                samples.extend(samples_by_idx[idx])
-            return samples
-
-        print("   [Warn] Could not identify Eat/Drink/Other indices, skipping hard balance.")
         return raw_samples
 
     def _apply_abnormal5_balance(self, raw_samples):

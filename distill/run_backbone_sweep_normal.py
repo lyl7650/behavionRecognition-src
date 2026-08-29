@@ -23,9 +23,10 @@ BACKBONE_KD_OVERRIDES = {
 }
 
 def _resolve_anchor_idx(class_names):
-    if "resting" in class_names:
+    try:
         return class_names.index("resting")
-    return 2 if len(class_names) > 2 else len(class_names) - 1
+    except ValueError as exc:
+        raise ValueError("normal distillation requires a 'resting' class") from exc
 
 
 def main():

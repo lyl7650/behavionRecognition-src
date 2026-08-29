@@ -68,7 +68,7 @@ def main(argv=None):
         print(f"[SILENTLY SKIPPED] Unclassifiable samples (not counted in any class): {report['unrecognized']}")
     if report["label_mismatch"]:
         print(f"[LABEL MISMATCH] Folder name disagrees with label.txt: {report['label_mismatch']}")
-    print("Note: classification relies on class keywords in file/dir names; a fallback class like 'other' may cap finer classes.")
+    print("Note: classification relies on class keywords in file/dir names; every sample name must contain one configured class name.")
     print("=========================")
 
     input("\nHealth check OK? Press Enter to continue, Ctrl+C to abort")

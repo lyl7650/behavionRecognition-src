@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
 import json
+import os
 import re
 import time
 from datetime import datetime
@@ -25,7 +27,6 @@ import yaml
 from torchvision.transforms import v2
 from ultralytics import YOLO
 
-from models.student_factory import MOVINET_VARIANTS, build_student
 from models.teacher import SwinTeacher
 from utils.abnormal_crop_video import build_smoothed_crop_boxes
 from utils.metrics import write_behavior_metrics
@@ -36,10 +37,15 @@ ROOT = Path(__file__).resolve().parents[2]
 RABBIT_VIDEOS = ROOT / "dataset/raw_videos/rabbit/兔子评测数据集/兔子测试新评测集"
 RABBIT_ANNOTATIONS = ROOT / "dataset/raw_videos/rabbit/兔子评测数据集/兔子annotation"
 PET_VIDEOS = ROOT / "dataset/raw_videos/pet/猫狗评测集/猫狗评测数据集"
-PET_STATE_MAP = {"EATING": "EATING", "DRINKING": "DRINKING", "RESTING": "OTHER", "ACTIVE": "OTHER"}
+PET_STATE_MAP = {
+    "EATING": "EATING",
+    "DRINKING": "DRINKING",
+    "RESTING": "RESTING",
+    "ACTIVE": "ACTIVE",
+}
 SPECIES = {
     "rabbit": ["resting", "active", "eating", "drinking"],
-    "pet": ["eat", "drink", "other"],
+    "pet": ["eat", "drink", "active", "resting"],
 }
 # Detection + crop settings aligned with training crop pipeline (abnormal_crop_video).
 EXPAND_RATIO = 1.25
@@ -152,6 +158,8 @@ def load_model(checkpoint: Path, model_kind: str, class_names: list[str], device
         state = {key.replace("base.model.", "").replace("module.", ""): value for key, value in state.items()}
         target = model.model
     else:
+        from models.student_factory import MOVINET_VARIANTS, build_student
+
         cfg = _recognizer_config()
         backbone = cfg.get("backbone") or cfg.get("timm_model", "repvit_m1")
         if backbone in MOVINET_VARIANTS:
@@ -397,6 +405,88 @@ def _mean(rows: list[dict[str, Any]], key: str) -> float | None:
     return round(sum(values) / len(values), 4) if values else None
 
 
+def _dominant_gt_state(annotation_path: Path) -> str:
+    """Return the GT state with the longest total duration, e.g. 'resting'."""
+    try:
+        segments = _read_json(annotation_path).get("segments", [])
+    except (OSError, json.JSONDecodeError):
+        return ""
+    durations: dict[str, float] = {}
+    for segment in segments:
+        state = str(segment.get("state", "")).lower()
+        span = float(segment.get("end_ms", 0)) - float(segment.get("start_ms", 0))
+        durations[state] = durations.get(state, 0.0) + max(0.0, span)
+    return max(durations, key=durations.get) if durations else ""
+
+
+def write_evaluation_report(output_dir: Path, summary: dict[str, Any]) -> Path:
+    """Write evaluation_report.html: a Summary table plus one row per video with its timeline plot."""
+    def fmt(value: Any) -> str:
+        value = _scalar_metric(value)
+        return "-" if value is None else f"{value:.4f}"
+
+    aggregate = summary["aggregate"]
+    summary_items = [
+        ("Species", summary["species"]),
+        ("Model kind", summary["model_kind"]),
+        ("Checkpoint", summary["checkpoint"]),
+        ("Detector", summary["detector"]),
+        ("Expand ratio", summary["expand_ratio"]),
+        ("Annotated videos", summary["annotated_videos"]),
+        ("Sample every (s)", summary["sample_every_seconds"]),
+        ("Macro Time IoU", fmt(aggregate["time_iou_macro"])),
+        ("Event F1 (tIoU 0.3)", fmt(aggregate["event_f1_tiou_0.3"])),
+        ("Event F1 (tIoU 0.5)", fmt(aggregate["event_f1_tiou_0.5"])),
+        ("Event F1 (tIoU 0.7)", fmt(aggregate["event_f1_tiou_0.7"])),
+        ("Transition F1", fmt(aggregate["transition_f1"])),
+    ]
+    lines = [
+        "<!DOCTYPE html>",
+        "<html><head><meta charset='utf-8'><title>Evaluation Report</title><style>",
+        "body{font-family:Segoe UI,Arial,sans-serif;margin:24px;}",
+        "table{border-collapse:collapse;margin-bottom:32px;}",
+        "th,td{border:1px solid #bbb;padding:4px 10px;text-align:left;vertical-align:top;}",
+        "th{background:#f0f0f0;}",
+        "img{max-width:520px;display:block;}",
+        "</style></head><body>",
+        "<h1>Evaluation Report</h1>",
+        "<h2>Summary</h2>",
+        "<table>",
+    ]
+    for key, value in summary_items:
+        lines.append(f"<tr><th>{html.escape(str(key))}</th><td>{html.escape(str(value))}</td></tr>")
+    lines += [
+        "</table>",
+        "<h2>Timeline Comparison</h2>",
+        "<table>",
+        "<tr><th>Video</th><th>GT label</th><th>Eval s</th><th>Time IoU</th>"
+        "<th>Event F1 (tIoU 0.3)</th><th>Event F1 (tIoU 0.5)</th><th>Event F1 (tIoU 0.7)</th>"
+        "<th>Transition F1</th><th>GT/system timeline</th><th>Notes</th></tr>",
+    ]
+    for row in summary["videos"]:
+        plot = str(row.get("timeline_plot", ""))
+        src = html.escape(os.path.relpath(plot, output_dir).replace(os.sep, "/")) if plot else ""
+        image = f"<img src='{src}' alt='timeline'>" if src else "-"
+        lines.append(
+            "<tr>"
+            f"<td>{html.escape(str(row['video']))}</td>"
+            f"<td>{html.escape(str(row.get('gt_label', '')))}</td>"
+            f"<td>{fmt(row.get('eval_seconds'))}</td>"
+            f"<td>{fmt(row.get('time_iou_macro'))}</td>"
+            f"<td>{fmt(row.get('event_f1_tiou_0.3'))}</td>"
+            f"<td>{fmt(row.get('event_f1_tiou_0.5'))}</td>"
+            f"<td>{fmt(row.get('event_f1_tiou_0.7'))}</td>"
+            f"<td>{fmt(row.get('transition_f1'))}</td>"
+            f"<td>{image}</td>"
+            "<td></td>"
+            "</tr>"
+        )
+    lines += ["</table>", "</body></html>"]
+    report_path = output_dir / "evaluation_report.html"
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    return report_path
+
+
 def run_evaluation(
     species: str,
     model_kind: str,
@@ -416,7 +506,9 @@ def run_evaluation(
     detector, detect_cfg = load_detector(species, device)
     print(f"Detector: {detect_cfg['yolo_model']} (expand_ratio={detect_cfg['expand_ratio']})")
     model = load_model(checkpoint, model_kind, class_names, device)
-    metric_class_names = ["eating", "drinking", "other"] if species == "pet" else class_names
+    metric_class_names = [
+        "eating", "drinking", "active", "resting"
+    ] if species == "pet" else class_names
     rows: list[dict[str, Any]] = []
     for index, (video, annotation) in enumerate(pairs, 1):
         video_dir = output_dir / _safe_name(video)
@@ -442,7 +534,10 @@ def run_evaluation(
             output_path=video_dir / "metrics.json",
             timeline_plot_path=video_dir / "gt_system_timeline.png",
         )
-        rows.append(_metric_row(video, metric))
+        row = _metric_row(video, metric)
+        row["gt_label"] = _dominant_gt_state(annotation)
+        row["eval_seconds"] = _read_json(video_dir / "summary.json").get("end_seconds")
+        rows.append(row)
     summary = {
         "species": species,
         "model_kind": model_kind,
@@ -463,6 +558,7 @@ def run_evaluation(
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+    report_path = write_evaluation_report(output_dir, summary)
     aggregate = summary["aggregate"]
     print("\nEvaluation complete")
     print(f"Annotated videos: {len(rows)}")
@@ -470,6 +566,7 @@ def run_evaluation(
     print(f"Event F1 (tIoU 0.5): {aggregate['event_f1_tiou_0.5']}")
     print(f"Transition F1: {aggregate['transition_f1']}")
     print(f"Results saved to: {output_dir}")
+    print(f"Report: {report_path}")
     return output_dir
 
 

@@ -5,13 +5,13 @@ from scripts.pipeline import run_crop
 def test_validate_sorted_ok(tmp_path):
     (tmp_path / "eat").mkdir()
     (tmp_path / "eat" / "a.mp4").write_text("x", encoding="utf-8")
-    run_crop.validate_sorted(str(tmp_path), ["eat", "drink", "other"])
+    run_crop.validate_sorted(str(tmp_path), ["eat", "drink", "active", "resting"])
 
 
 def test_validate_sorted_raises_when_no_videos(tmp_path):
     (tmp_path / "eat").mkdir()
     with pytest.raises(FileNotFoundError):
-        run_crop.validate_sorted(str(tmp_path), ["eat", "drink", "other"])
+        run_crop.validate_sorted(str(tmp_path), ["eat", "drink", "active", "resting"])
 
 
 def test_assert_snapshot_empty_raises_when_nonempty(tmp_path):

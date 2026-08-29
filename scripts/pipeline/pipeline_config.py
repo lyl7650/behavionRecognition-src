@@ -16,7 +16,7 @@ SPECIES = {
         "raw_root": r"dataset\raw_videos\pet\normal",
         "dataset_root": r"dataset\pet\normal",
         "path_token": "pet",
-        "teacher_checkpoint": r"E:\ActionRecognition\behavionRecognition-src\outputs\pet\2026-07-10\teacher_finetuned_3cls_0710\pet_teacher_0710_ema-videos.pth",
+        "teacher_checkpoint": r"E:\ActionRecognition\behavionRecognition-src\outputs\pet\2026-07-24\pet_teacher_2026-07-24_ema-videos.pth",
     },
     "rabbit": {
         "class_names": ["resting", "active", "eating", "drinking"],

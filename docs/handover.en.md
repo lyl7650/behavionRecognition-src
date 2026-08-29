@@ -1,23 +1,24 @@
 # Handover Doc: Pet Behavior Recognition Model Training
 
-For the end-to-end operating steps, see [`docs/SOP.md`](./SOP.en.md). This document is a reference manual: script inventory, how `dataset/` is laid out, how to change training parameters.
+For the end-to-end operating steps, see [`docs/SOP.en.md`](./SOP.en.md). This document is a reference manual: script inventory, how `dataset/` is laid out, how to change training parameters.
 
 > Run `conda activate AR` to activate the environment before running any script in this document.
 
-## 1. Core script inventory (input → output)
+## 1. Recommended operating entrypoints (input → output)
 
-| Script | Purpose | Input | Output |
-| --- | --- | --- | --- |
-| `utils/abnormal_crop.py` | Takes already-clipped-and-classified short videos, crops the target region with YOLO, and outputs **per-frame images** | Clipped/classified short-video folders specified by `INPUT_BASE_DIRS` in the script | `train/val` directories under `OUTPUT_BASE_DIR`; each sample is a folder (16 JPG frames + `label.txt`) |
-| `utils/abnormal_crop_video.py` | Same as above, but outputs **cropped short video clips** | Same as above (constants configured separately in the script) | `train/val` directories under `OUTPUT_BASE_DIR`; each sample is an mp4 video file stored under a category folder |
-| `train/train_finetune_normal_3.py` | Stage 1: fine-tune the teacher model (Swin3D-B) | `config.yaml` → `task_configs.normal` (`dataset_path`, `class_names`, `finetune.*`) | Teacher checkpoint (EMA) under `finetune.output_dir`, filename `finetune.output_model_name` |
-| `distill/distill_normal_3.py` | Stage 2: distill the teacher into a lightweight student model (RepViT + GRU) | `config.yaml` → `distillation.teacher_checkpoint` (teacher weights) + `task_configs.normal.dataset_path` (training data, usually the same batch used for the teacher) | Student checkpoints (raw + EMA files) under `task_configs.normal.distillation.output_dir` |
+Run the numbered launchers from the project root. They activate the `AR` environment and call the matching module; `5_run_test.bat` evaluates an existing checkpoint rather than creating a training snapshot.
 
-`abnormal_crop.py` and `abnormal_crop_video.py` are **two optional output formats**, unrelated to the cat/dog vs. rabbit species — both do "crop the target region out of a classified long video with YOLO, then slice it into fixed-length clips," just saving as per-frame images vs. short video files respectively. Samples in either format can be read directly by the training scripts. **For newly processed data going forward, prefer `abnormal_crop_video.py` (video-clip format).**
+| Launcher | Module | Purpose |
+| --- | --- | --- |
+| `1_scaffold_dirs.bat` | `scripts.pipeline.scaffold_dirs` | Create the raw-video and working-directory structure for a species/site/date batch. |
+| `2a_presort_label.bat` → `2c_presort_apply.bat` | `scripts.presort.run_presort_label` → `run_presort_apply` | Pre-label long videos, review them in the browser, then write approved clips into `sorted-<date>/`. |
+| `3_run_crop.bat` | `scripts.pipeline.run_crop` | YOLO-crop approved clips into a new training snapshot. Choose video clips (default) or per-frame samples. |
+| `4_run_train_distill.bat` | `scripts.pipeline.run_train_distill` | Merge the previous snapshot, print a health report, update `config.yaml`, fine-tune the teacher, then distill the student. |
+| `5_run_test.bat` | `scripts.pipeline.run_test --interactive` | Offline-evaluate a selected teacher or student checkpoint. |
 
-Neither of the two training scripts accepts command-line arguments — run them directly with `python <script path>`; all configuration comes from the root `config.yaml`.
+`run_crop` configures `utils/abnormal_crop.py` (per-frame format) or `utils/abnormal_crop_video.py` (video-clip format) from the chosen species, site, date, and format. These crop scripts are pipeline internals, not the recommended manual entrypoints. Video clips are the default format for new data.
 
-> The repo also has other similarly-named scripts (`train_finetune_ab_5.py`, `distill_abnormal_5.py`, `run_train.py`, `run_distill.py`, etc.) — **the current training pipeline does not use them**, and they are out of scope for this document.
+The thin task entries `train/train_finetune_normal_3.py` and `distill/distill_normal_3.py` remain usable for focused training work, but `run_train_distill` is the normal end-to-end entrypoint. It updates `config.yaml` and its teacher checkpoint automatically after the health-check confirmation.
 
 ## 2. `dataset/` layout logic
 
@@ -27,7 +28,7 @@ The behavior categories are fixed per species, defined in `pipeline_config.py` �
 
 | Species | `class_names` (in order) |
 | --- | --- |
-| Cat/dog (`pet`) | `eat`, `drink`, `other` (3 classes) |
+| Cat/dog (`pet`) | `eat`, `drink`, `active`, `resting` (4 classes) |
 | Rabbit (`rabbit`) | `resting`, `active`, `eating`, `drinking` (4 classes) |
 
 `config.yaml`'s `task_configs.normal.class_names` must match this list exactly (including order) when training the corresponding species. Tools that take a `--species` argument (e.g. `auto_presort_label.py`) resolve the category list from `pipeline_config.py` automatically.
@@ -37,16 +38,16 @@ The behavior categories are fixed per species, defined in `pipeline_config.py` �
 ```
 dataset/
   pet/normal/<date>/       # cat/dog training data snapshot, e.g. dataset/pet/normal/2026-07-10
-    train/ val/            # or
-    videos/train/ videos/val/   # depending on which processing script produced it
-  rabbit/<date(-videos)>/  # rabbit training data snapshot, e.g. dataset/rabbit/0703-videos
-    train/
-    val/
+    videos/train/ videos/val/   # video-clip format (default)
+    # or train/ val/            # per-frame format
+  rabbit/<YYYY-MM-DD>/
+    videos/train/ videos/val/   # video-clip format (default)
+    # or train/ val/            # per-frame format
 ```
 
-Within a given date snapshot, whether `train/val` sits directly under the date folder (per-frame format) or under a `videos/` subdirectory (video-clip format) depends on whether `abnormal_crop.py` or `abnormal_crop_video.py` was used at the time — both naming conventions exist and aren't fully consistent, so check the actual structure before using a given snapshot.
+Within a date snapshot, `train/val` directly under the date folder means per-frame format; `videos/train` and `videos/val` mean video-clip format. The crop and training launchers must use the same format.
 
-**Each date folder is a complete snapshot after a "merge old + new data" pass, not just that day's incremental additions.** The rule for deciding which one is currently valid is simple: **within the same species, the folder with the latest date is the currently valid data** — earlier date folders are historical versions kept for reference only; don't append new data to them, and don't train against an old date's path.
+**Each date folder becomes a complete snapshot after the merge-old-plus-new pass, not just that day's incremental additions.** `run_train_distill` uses the date selected for the current batch and merges the latest older ISO-date snapshot. If it finds older directory names it cannot parse, it shows the auto-selected directory and requires typing `yes` before merging.
 
 For how a new snapshot is produced and when old data needs to be merged in, see [SOP Steps 4-5](./SOP.en.md#step-4-run-the-data-processing-script-to-produce-training-samples).
 
@@ -95,8 +96,9 @@ training/teacher_finetune.py     ← the actual teacher fine-tuning training loo
 training/distillation.py         ← the actual distillation training loop
 training/distillation_losses.py  ← builds the distillation loss (KD loss, feature-matching loss)
 models/teacher.py                ← teacher model definition (SwinTeacher)
+models/student.py                ← current student model definition
 models/student_factory.py        ← builds the student model based on config
-models/timm_gru_student.py       ← student model architecture (timm backbone + GRU)
+models/timm_gru_student.py       ← timm backbone + GRU implementation used by the factory
 dataset/__init__.py              ← get_dataset(), builds a VideoDataset from config
 utils/video_dataset.py           ← dataset loading: sample scanning, frame reading, augmentation, class-imbalance truncation
 ```
@@ -106,13 +108,13 @@ utils/video_dataset.py           ← dataset loading: sample scanning, frame rea
 ```yaml
 task_configs:
   normal:
-    dataset_path: "dataset/rabbit/0626-videos"   # training data path; change this to switch species/snapshot (the pet/rabbit substring must match the species — see ⚠️ below)
-    class_names: ["resting", "active", "eating", "drinking"]   # category list; order = class index
+    dataset_path: "dataset/pet/normal/2026-07-23/videos"   # example video-clip snapshot; choose the current species/date batch
+    class_names: ["eat", "drink", "active", "resting"]   # category list; order = class index
 
     finetune:                      # Stage 1: teacher fine-tuning hyperparameters
       checkpoint_path: None        # None = start from pretrained/random init; to continue training, fill in the previous teacher checkpoint path
-      output_dir: "outputs/rabbit/{date}/teacher_finetuned_3cls_{date}"   # {date} is auto-substituted with today's date
-      output_model_name: "rabbit_teacher_{date}_ema-videos.pth"
+      output_dir: "outputs/pet/normal/{date}/teacher_finetuned_{date}"   # {date} is auto-substituted with today's date
+      output_model_name: "pet_teacher_{date}_ema-videos.pth"
       batch_size: 4
       accum_steps: 8               # gradient accumulation steps; effective batch = batch_size * accum_steps
       epochs: 20
@@ -120,23 +122,27 @@ task_configs:
       num_workers: 4
 
     recognizer:                    # student model architecture
-      backbone: repvit_m1          # timm backbone name; see the BACKBONE_GRU_HIDDEN table in models/student_factory.py for valid values
+      backbone: repvit_m1          # timm backbone name; see models/student_factory.py for valid values
       gru_hidden: auto             # auto = looked up automatically from the backbone name
       temporal_window: 16          # frames sampled per sample; must match FRAMES_PER_CLIP in the data processing script
       imgsz: 224
       dropout: 0.2
       augment:                     # data augmentation; lower the probability/magnitude or set to 0 to weaken/disable
+        scale_min: 0.8
+        scale_max: 1.0
         rotate: 15
+        translate: 0.1
         fliplr: 0.5
         brightness: 0.15
+        contrast: 0.15
         reverse: 0.3              # probability of reversing the whole frame sequence (train-only)
 
     distillation:                  # Stage 2: this task's output paths (learning rate/loss weights come from the top-level distillation block)
-      output_dir: "outputs/rabbit/{date}"
+      output_dir: "outputs/pet/{date}"
       output_model_name: "repvit_best_distilled_{date}.pth"
 
 distillation:                      # shared distillation hyperparameters
-  teacher_checkpoint: "outputs/rabbit/2026-07-06/teacher_finetuned_3cls_0706/rabbit_teacher_0706_ema-videos.pth"
+  teacher_checkpoint: "outputs/pet/normal/<date>/teacher_finetuned_<date>/pet_teacher_<date>_ema-videos.pth"
   temperature: 4.0                # distillation temperature; higher = softer teacher probability distribution
   loss_weights:
     gt: 1.0      # ground-truth label loss weight
@@ -161,17 +167,44 @@ distillation:                      # shared distillation hyperparameters
 | Which teacher checkpoint distillation uses | `distillation.teacher_checkpoint` |
 | Data augmentation strength | `task_configs.normal.recognizer.augment` |
 | Student model backbone | `task_configs.normal.recognizer.backbone` |
-| Where output models are saved, what they're named | `finetune.output_dir` / `output_model_name` (supports the `{date}` placeholder) |
+| Where output models are saved, what they're named | Teacher: `task_configs.normal.finetune.output_dir` / `output_model_name`; student: `task_configs.normal.distillation.output_dir` / `output_model_name` (supports `{date}`) |
 | Frames sampled per sample | `recognizer.temporal_window`, must match `FRAMES_PER_CLIP` in the data processing script |
-| Special handling of the "background class" (other/resting) in the loss | Not in `config.yaml` — requires a code change: the constructor args of `HierarchicalPriorityLoss(other_idx=..., ...)` in `train/train_finetune_normal_3.py`; `_resolve_other_idx()` in `distill/distill_normal_3.py` |
+| Priority-loss anchor class | Teacher training resolves `resting` from `class_names` only when `loss_type: hierarchical` is used. Student distillation always uses this priority loss, so its normal-behavior labels must include `resting`. |
 
-⚠️ When switching between cat/dog and rabbit, the `pet` / `rabbit` substrings in `dataset_path`, `output_dir`, and `output_model_name` must all be updated together — not just `class_names` — otherwise training will still run, but the resulting model will be saved under the wrong species directory.
+`run_train_distill` updates the normal dataset path, class names, species-specific output paths, and teacher checkpoint together. For manual changes, keep the species token in those paths consistent with `class_names`.
 
-⚠️ The `other_idx` in `train/train_finetune_normal_3.py` is a hardcoded integer (currently `2`) and does not automatically follow the `class_names` order. When switching species or changing the category order, make sure to check which position the "background class" (`other` for cat/dog, `resting` for rabbit) occupies in the new `class_names` — if it's not in that position, this number needs to be changed by hand.
+### 3.4 How training configuration actually takes effect
+
+#### Teacher fine-tuning
+
+`task_configs.normal.finetune` controls the teacher. `batch_size` is the number of samples loaded at once; `accum_steps` accumulates that many small batches before one optimizer update, so the effective batch size is roughly `batch_size × accum_steps`. This is the usual first adjustment when GPU memory is insufficient.
+
+The teacher uses AdamW, cosine learning-rate decay, gradient clipping, and EMA (an averaged copy of the model used for validation and saving). It saves only the best EMA teacher checkpoint, selected first by validation accuracy and then by lower validation loss. Training stops after seven consecutive epochs without improvement. Teacher fine-tuning calls `.cuda()` directly, so it requires a CUDA-capable PyTorch environment.
+
+`loss_type: ce` is the default and uses ordinary cross-entropy. `loss_type: hierarchical` changes the teacher loss to first distinguish `resting` from all other labels, then distinguish the remaining labels; it fails clearly if `resting` is absent from `class_names`.
+
+#### Student distillation
+
+For distillation, a setting in `task_configs.normal.distillation` overrides the same setting in top-level `distillation`; if neither is present, the code default is used. This applies to the teacher checkpoint, output paths, temperature, loss weights, learning rate, batch size, epochs, and worker count. Put a batch-specific override in the task block only when that difference is intentional.
+
+The total student loss has three parts: `gt` keeps the student aligned with the manual labels; `kd` makes it imitate the teacher's predicted probabilities; `feature` compares intermediate features. `temperature` softens both models' probability distributions for the KD calculation. The feature-loss weight gradually decreases to half of its configured value over the run. The student saves raw and EMA checkpoints when validation accuracy reaches a new best value; deployment normally uses the EMA file.
+
+The distillation code always builds a teacher with `num_classes = len(class_names)`. Use a teacher checkpoint made for the same species and the same class order. The checkpoint loader is non-strict, so a mismatch may load partially rather than fail immediately; confirm the printed class list and checkpoint path before the run proceeds.
+
+#### Student architecture and data settings
+
+`recognizer.backbone` is the current student-model selector; it takes precedence over the older compatibility field `timm_model`. Most values create a timm backbone plus GRU. `movinet_a2`, `movinet_a3`, `movinet_a4`, and `movinet_a5` create a 3D MoViNet student instead; for those models, feature loss is disabled because there is no compatible 2D backbone feature hook.
+
+For timm + GRU students, `gru_hidden: auto` selects the hidden size from `models/student_factory.py`; set it manually only when deliberately testing an architecture. `dropout` is passed to the student classifier. Changing the backbone or class order requires a newly trained student checkpoint rather than reusing an old one.
+
+The main training path reads `imgsz`, `temporal_window`, and the `augment` fields `scale_min`, `scale_max`, `rotate`, `translate`, `fliplr`, `brightness`, `contrast`, and `reverse`. Augmentation is train-only and is applied consistently to the whole clip; `reverse` reverses the full temporal sequence with its configured probability. `temporal_window` must continue to match the clip length produced by the crop pipeline.
+
+The current standard student factory does not use `head`, `use_tsm`, `lstm_hidden`, `lstm_layers`, `mamba_d_state`, `mamba_d_conv`, or `mamba_expand` from the normal recognizer block. Treat them as inactive compatibility/configuration residue, not as knobs for the regular pipeline.
 
 ## 4. Output & delivery
 
 - Teacher checkpoint (produced in Step 7): only used to supervise the distillation stage, **not deployed**.
 - Student checkpoint (produced in Step 8): two files — raw weights + EMA weights — **deployment uses the EMA version**.
 - Once the new student EMA weights are ready, use them to update the deployed system.
-- The repo has no ready-to-run inference/export script that goes straight from "checkpoint → deployment format." `utils/export_onnx.py` is the relevant export script — confirm the exact export process separately during handover.
+- `5_run_test.bat` provides ready-to-run offline inference and evaluation for teacher or student checkpoints. It YOLO-crops the animal first and writes traces, JSON/CSV summaries, and timeline PNGs beside the selected checkpoint.
+- Deployment-format export remains separate: `utils/export_onnx.py` is the relevant script, and its exact deployment contract should be confirmed during handover.

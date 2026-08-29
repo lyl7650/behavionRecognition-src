@@ -38,15 +38,16 @@ def _build_runtime_config(config_override=None, config_path=None):
     }
 
 
-def _resolve_other_idx(class_names):
-    if "resting" in class_names:
+def _resolve_anchor_idx(class_names):
+    try:
         return class_names.index("resting")
-    return 2 if len(class_names) > 2 else len(class_names) - 1
+    except ValueError as exc:
+        raise ValueError("normal distillation requires a 'resting' class") from exc
 
 
 def _build_criterion(runtime_cfg):
     return build_priority_composite_distill_loss(
-        anchor_idx=_resolve_other_idx(runtime_cfg["class_names"]),
+        anchor_idx=_resolve_anchor_idx(runtime_cfg["class_names"]),
         alpha=runtime_cfg["loss_weights"]["feature"],
         beta=runtime_cfg["loss_weights"]["kd"],
         gamma=runtime_cfg["loss_weights"]["gt"],

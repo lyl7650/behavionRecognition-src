@@ -26,8 +26,8 @@ def _seed(batch_dir, rel="v1.mp4", label="resting"):
 
 
 def test_api_videos_merges_across_dirs_with_namespaced_rel_path(tmp_path):
-    dir_a = tmp_path / "siteA-record" / "sorted-1" / "other"
-    dir_b = tmp_path / "siteB-record" / "sorted-2" / "other"
+    dir_a = tmp_path / "siteA-record" / "sorted-1" / "pending"
+    dir_b = tmp_path / "siteB-record" / "sorted-2" / "pending"
     dir_a.mkdir(parents=True)
     dir_b.mkdir(parents=True)
     _seed(dir_a, rel="clip1.mp4")
@@ -39,8 +39,8 @@ def test_api_videos_merges_across_dirs_with_namespaced_rel_path(tmp_path):
             items = json.loads(r.read())
         rels = sorted(it["rel_path"] for it in items)
         assert rels == [
-            "siteA-record/sorted-1/other/clip1.mp4",
-            "siteB-record/sorted-2/other/clip2.mp4",
+            "siteA-record/sorted-1/pending/clip1.mp4",
+            "siteB-record/sorted-2/pending/clip2.mp4",
         ]
         # No model in this workflow -> conf_tier is faked as "0.9" so the sidebar's
         # default filter (only 0.9 checked) doesn't hide every video.
@@ -50,8 +50,8 @@ def test_api_videos_merges_across_dirs_with_namespaced_rel_path(tmp_path):
 
 
 def test_api_doc_get_and_post_route_to_correct_physical_dir(tmp_path):
-    dir_a = tmp_path / "siteA-record" / "sorted-1" / "other"
-    dir_b = tmp_path / "siteB-record" / "sorted-2" / "other"
+    dir_a = tmp_path / "siteA-record" / "sorted-1" / "pending"
+    dir_b = tmp_path / "siteB-record" / "sorted-2" / "pending"
     dir_a.mkdir(parents=True)
     dir_b.mkdir(parents=True)
     _seed(dir_a, rel="clip1.mp4")
@@ -59,7 +59,7 @@ def test_api_doc_get_and_post_route_to_correct_physical_dir(tmp_path):
 
     server, base = _start_multi([dir_a, dir_b])
     try:
-        rel = "siteB-record/sorted-2/other/clip2.mp4"
+        rel = "siteB-record/sorted-2/pending/clip2.mp4"
         with urllib.request.urlopen(f"{base}/api/doc?rel={urllib.parse.quote(rel)}") as r:
             doc = json.loads(r.read())
         assert doc["rel_path"] == "clip2.mp4"
@@ -78,8 +78,8 @@ def test_api_doc_get_and_post_route_to_correct_physical_dir(tmp_path):
 
 
 def test_video_range_request_routes_to_correct_dir(tmp_path):
-    dir_a = tmp_path / "siteA-record" / "sorted-1" / "other"
-    dir_b = tmp_path / "siteB-record" / "sorted-2" / "other"
+    dir_a = tmp_path / "siteA-record" / "sorted-1" / "pending"
+    dir_b = tmp_path / "siteB-record" / "sorted-2" / "pending"
     dir_a.mkdir(parents=True)
     dir_b.mkdir(parents=True)
     _seed(dir_a, rel="clip1.mp4")
@@ -90,7 +90,7 @@ def test_video_range_request_routes_to_correct_dir(tmp_path):
     server, base = _start_multi([dir_a, dir_b])
     try:
         req = urllib.request.Request(
-            f"{base}/video/siteB-record/sorted-2/other/clip2.mp4",
+            f"{base}/video/siteB-record/sorted-2/pending/clip2.mp4",
             headers={"Range": "bytes=0-3"})
         with urllib.request.urlopen(req) as r:
             assert r.status == 206
@@ -100,7 +100,7 @@ def test_video_range_request_routes_to_correct_dir(tmp_path):
 
 
 def test_unknown_rel_path_returns_404(tmp_path):
-    dir_a = tmp_path / "siteA-record" / "sorted-1" / "other"
+    dir_a = tmp_path / "siteA-record" / "sorted-1" / "pending"
     dir_a.mkdir(parents=True)
     _seed(dir_a, rel="clip1.mp4")
 
@@ -117,8 +117,8 @@ def test_unknown_rel_path_returns_404(tmp_path):
 
 
 def test_api_stats_aggregates_across_dirs(tmp_path):
-    dir_a = tmp_path / "siteA-record" / "sorted-1" / "other"
-    dir_b = tmp_path / "siteB-record" / "sorted-2" / "other"
+    dir_a = tmp_path / "siteA-record" / "sorted-1" / "pending"
+    dir_b = tmp_path / "siteB-record" / "sorted-2" / "pending"
     dir_a.mkdir(parents=True)
     dir_b.mkdir(parents=True)
     _seed(dir_a, rel="clip1.mp4", label="resting")

@@ -32,7 +32,7 @@ def _write_sample_config(tmp_path):
     task_configs:
       normal:
         dataset_path: r"E:\\old\\pet\\videos"
-        class_names: ['eat','drink','other']
+        class_names: ['eat','drink','active','resting']
         finetune:
           loss_type: "ce"
           output_dir: "outputs/pet/{date}/teacher_finetuned_{date}"

@@ -111,7 +111,7 @@ def test_health_report_flags_cross_split_leak_and_unrecognized(tmp_path):
     _touch(new / "val" / "eat" / "dup.mp4")
     _touch(new / "train" / "eat" / "mystery.mp4")
     _touch(new / "train" / "nocat" / "weird.mp4")
-    rep = sm.health_report(str(new), ["eat", "drink", "other"], frames=False)
+    rep = sm.health_report(str(new), ["eat", "drink", "active", "resting"], frames=False)
     assert "dup.mp4" in rep["cross_split_leak"]
     assert any("nocat" in u or "weird" in u for u in rep["unrecognized"])
 

@@ -206,7 +206,7 @@ class BuildTrainConfigTests(unittest.TestCase):
                 "task_configs": {
                     "normal": {
                         "dataset_path": "dataset/pet/normal/0702",
-                        "class_names": ["eat", "drink", "other"],
+                        "class_names": ["eat", "drink", "active", "resting"],
                         "recognizer": {
                             "imgsz": 224,
                             "temporal_window": 16,

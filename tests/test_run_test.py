@@ -25,7 +25,7 @@ def test_find_rabbit_pairs_matches_video_path_and_ignores_redundant_json(tmp_pat
     assert run_test.find_rabbit_pairs(videos, annotations) == [(videos / "matched.mp4", annotations / "matched.annotations.json")]
 
 
-def test_pet_states_conversion_maps_resting_and_active_to_other_metrics_state(tmp_path):
+def test_pet_states_conversion_keeps_all_four_metrics_states(tmp_path):
     states = tmp_path / "sample_states.json"
     states.write_text(json.dumps({"video": str(tmp_path / "sample.mp4"), "frames": [
         {"timestamp_sec": 0.0, "state": "RESTING"}, {"timestamp_sec": 0.5, "state": "EATING"},
@@ -33,7 +33,11 @@ def test_pet_states_conversion_maps_resting_and_active_to_other_metrics_state(tm
 
     annotation = run_test.pet_annotation_from_states(states, tmp_path / "converted.annotations.json")
     payload = json.loads(annotation.read_text(encoding="utf-8"))
-    assert [segment["state"] for segment in payload["segments"]] == ["OTHER", "EATING", "DRINKING", "OTHER"]
+    assert [segment["state"] for segment in payload["segments"]] == ["RESTING", "EATING", "DRINKING", "ACTIVE"]
+
+
+def test_pet_evaluation_uses_four_class_order():
+    assert run_test.SPECIES["pet"] == ["eat", "drink", "active", "resting"]
 
 
 def test_metric_row_uses_event_f1_at_tiou_half():
@@ -77,7 +81,7 @@ def test_student_inference_uses_forward_seq_not_single_frame_forward(tmp_path, m
         FakeStudent(),
         "student",
         tmp_path / "video.mp4",
-        ["eat", "drink", "other"],
+        ["eat", "drink", "active", "resting"],
         trace,
         summary,
         0.5,
@@ -177,6 +181,38 @@ def test_video_frames_applies_expanded_crop(monkeypatch, tmp_path):
     assert len(clips) >= 1
     assert seen["expand_ratio"] == 1.25
     assert clips[0][2].shape == (4, 3, 32, 32)
+
+def test_dominant_gt_state_picks_longest_total_duration(tmp_path):
+    annotation = tmp_path / "a.annotations.json"
+    annotation.write_text(json.dumps({"segments": [
+        {"start_ms": 0, "end_ms": 1000, "state": "ACTIVE"},
+        {"start_ms": 1000, "end_ms": 5000, "state": "RESTING"},
+        {"start_ms": 5000, "end_ms": 6000, "state": "ACTIVE"}]}), encoding="utf-8")
+    assert run_test._dominant_gt_state(annotation) == "resting"
+
+
+def test_write_evaluation_report_has_summary_and_one_row_per_video(tmp_path):
+    plot = tmp_path / "video_a" / "gt_system_timeline.png"
+    plot.parent.mkdir()
+    plot.touch()
+    summary = {
+        "species": "pet", "model_kind": "student", "checkpoint": "ckpt.pth",
+        "detector": "yolo.pt", "expand_ratio": 1.25, "annotated_videos": 1,
+        "sample_every_seconds": 0.5,
+        "aggregate": {"time_iou_macro": 0.5, "event_f1_tiou_0.3": 0.6,
+                      "event_f1_tiou_0.5": 0.4, "event_f1_tiou_0.7": 0.2, "transition_f1": None},
+        "videos": [{"video": "video_a.mp4", "gt_label": "resting", "eval_seconds": 59.9,
+                    "time_iou_macro": 0.5, "event_f1_tiou_0.3": 0.6, "event_f1_tiou_0.5": 0.4,
+                    "event_f1_tiou_0.7": 0.2, "transition_f1": 0.1, "timeline_plot": str(plot)}],
+    }
+    report = run_test.write_evaluation_report(tmp_path, summary)
+    content = report.read_text(encoding="utf-8")
+    assert report.name == "evaluation_report.html"
+    assert "video_a.mp4" in content
+    assert "<img src='video_a/gt_system_timeline.png'" in content
+    assert "resting" in content
+    assert content.count("Timeline Comparison") == 1
+
 
 def test_interactive_args_uses_numbered_choices():
     answers = iter(["2", "2", r"E:\ckpt.pth"])

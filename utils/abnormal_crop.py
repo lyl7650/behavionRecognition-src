@@ -37,7 +37,7 @@ INPUT_BASE_DIRS = [
 #                 "moving"
 #                    ]      # rabbit dataset class names
 
-CLASS_NAMES      = ["eat", "drink", "other"] # dog-cat dataset class names
+CLASS_NAMES      = ["eat", "drink", "active", "resting"] # dog-cat dataset class names
 OUTPUT_BASE_DIR  = r"E:\ActionRecognition\behavionRecognition-src\dataset\pet\normal\2026-07-10\videos"
 YOLO_MODEL_PATH  = r"E:\ActionRecognition\detection-src\cat_dog_detect\runs\yolo11n_scale0.6_fliplr0.4\weights\best.pt" # dog-cat detect model
 # YOLO_MODEL_PATH = r'e:\ActionRecognition\detection-src\rabbit-detect\runs\checkpoints\yolo11n.pt3\weights\rabbit-yolo11n-0603.pt' # rabbit detect model
@@ -53,7 +53,8 @@ TARGET_CLASSES   = [1, 2]   # dog-cat labels in the model, 1: cat, 2: dog
 LABEL_MAP = {
     'eat': 0,
     'drink':  1,
-    'other': 2,
+    'active': 2,
+    'resting': 3,
 }
 
 

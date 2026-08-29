@@ -5,16 +5,16 @@ pipeline:
   frame_skip: 3
 task_configs:
   normal:
-    dataset_path: dataset/pet/normal/2026-07-23/videos
+    dataset_path: dataset/rabbit/2026-07-21/videos
     class_names:
-    - resting
+    - eat
+    - drink
     - active
-    - eating
-    - drinking
+    - resting
     finetune:
       checkpoint_path: None
-      output_dir: outputs/pet/normal/{date}/teacher_finetuned_{date}
-      output_model_name: pet_teacher_{date}_ema-videos.pth
+      output_dir: outputs/rabbit/{date}/teacher_finetuned_{date}
+      output_model_name: rabbit_teacher_{date}_ema-videos.pth
       batch_size: 4
       accum_steps: 8
       epochs: 15
@@ -46,7 +46,7 @@ task_configs:
         contrast: 0.15
         reverse: 0.3
     distillation:
-      output_dir: outputs/pet/{date}
+      output_dir: outputs/rabbit/{date}
       output_model_name: repvit_best_distilled_{date}.pth
   abnormal:
     dataset_path: dataset/abnormal/5_cls
@@ -89,9 +89,9 @@ task_configs:
         contrast: 0.1
         reverse: 0.2
     distillation:
-      teacher_checkpoint: outputs/teacher_finetuned_5cls/teacher_best_5cls_ema.pth
-      output_dir: outputs/distilled_5cls_final
-      output_model_name: repvit_best_distilled_5cls_{date}.pth
+      teacher_checkpoint: outputs\rabbit\2026-07-27\teacher_finetuned_2026-07-27\rabbit_teacher_2026-07-27_ema-videos.pth
+      output_dir: outputs/distilled_final
+      output_model_name: repvit_best_distilled_{date}.pth
       temperature: 4.0
       loss_weights:
         gt: 1.0
@@ -106,7 +106,7 @@ distillation:
   mode_to_use: normal
   teacher_model: repvit_m1
   student_backbone: repvit_m1
-  teacher_checkpoint: outputs/pet/normal/2026-07-24/teacher_finetuned_2026-07-24/pet_teacher_2026-07-24_ema-videos.pth
+  teacher_checkpoint: outputs/rabbit/2026-08-01/teacher_finetuned_2026-08-01/rabbit_teacher_2026-08-01_ema-videos.pth
   temperature: 4.0
   loss_weights:
     gt: 1.0

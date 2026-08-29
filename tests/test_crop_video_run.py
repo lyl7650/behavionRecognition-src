@@ -46,6 +46,6 @@ def test_run_uses_config_on_empty_sorted(tmp_path):
     cfg = m.default_config()
     cfg["input_base_dir"] = str(src)
     cfg["output_base_dir"] = str(tmp_path / "out")
-    cfg["class_names"] = ["eat", "drink", "other"]
+    cfg["class_names"] = ["eat", "drink", "active", "resting"]
     fake = _FakeModel()
     m.run(cfg, model_factory=lambda dev: fake)   # 空目录，不应报错

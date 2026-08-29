@@ -15,7 +15,7 @@ def _sidecar(p, class_names, sha):
     (p.parent / (p.name + ".meta.json")).write_text(json.dumps(meta))
 
 
-CLASSES = ["eat", "drink", "other"]
+CLASSES = ["eat", "drink", "active", "resting"]
 
 
 def test_missing_checkpoint_raises(tmp_path):

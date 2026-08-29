@@ -19,9 +19,11 @@ cd E:/ActionRecognition/behavionRecognition-src
 | `2c_presort_apply.bat` | `python -m scripts.presort.run_presort_apply` | 切片落地到 sorted 目录 |
 | `3_run_crop.bat` | `python -m scripts.pipeline.run_crop [--frames]` | 裁目标区域、生成快照 |
 | `4_run_train_distill.bat` | `python -m scripts.pipeline.run_train_distill [--frames]` | 合并 + 训练 + 蒸馏 |
+| `5_run_test.bat` | `python -m scripts.pipeline.run_test --interactive` | 离线评测 teacher 或 student checkpoint |
 
-- `3` 和 `4` 双击后会先问一句 `Use default mode (video clips)? (Y/n)`：直接回车或输 `y` 走默认视频 clip 格式；输入 `n` 回车则走切帧格式。
+- `3` 和 `4` 双击后都会用编号选择格式：`1` 是默认的视频 clip 格式，`2` 是切帧格式。
 - **`4` 的格式选择必须和 `3` 保持一致**（同一批数据要么都用视频 clip，要么都用切帧）。
+- `5` 会依次用编号选择物种和模型类型（teacher/student），然后输入 checkpoint 路径。结果保存在 checkpoint 同级、带时间戳的 `test_results_<species>_<model_type>_<timestamp>/` 目录。
 - 启动器用「自己所在的文件夹」当项目目录，所以这些 `.bat` 必须和脚本放在同一目录（即项目根目录）；整个项目挪到别的盘/路径也照常能用。
 - 前置条件：已安装好名为 `AR` 的 conda 环境，且普通 cmd 里能直接调用 `conda`。
 
@@ -46,11 +48,17 @@ cd E:/ActionRecognition/behavionRecognition-src
 
 - `--frames` 需与 `run_crop.py` 用的格式保持一致。
 
-三个脚本启动后都会交互询问：
+### 5. `python -m scripts.pipeline.run_test --interactive` —— 离线评测
+
+选择 rabbit 或 pet，再选择 teacher 或 student，并输入要评测的 checkpoint 路径。评测会先用对应物种的 YOLO 模型裁出动物区域，再做行为识别；预测轨迹、每条视频的指标/时间线图，以及汇总 JSON/CSV 都保存在 checkpoint 同级的时间戳结果目录中。
+
+建目录和裁剪脚本会交互询问：
 
 - **物种**：`pet` 或 `rabbit`
 - **机构（site）**：本批数据来源机构
 - **日期**：见下方日期约定
+
+训练和蒸馏只询问物种和日期；不再询问 site，因为它处理的是已经生成的数据集快照。
 
 ## 剪辑分类：模型预标 + 网页审核（2a/2b/2c）
 
@@ -67,6 +75,7 @@ cd E:/ActionRecognition/behavionRecognition-src
    → 2a_label（模型预标）→ 2b_review（网页审核批准）→ 2c_apply（切片落地）
    → 3_run_crop（裁目标区域、生成快照）
    → 4_run_train_distill（合并 + 训练 + 蒸馏）
+   → 5_run_test（选择 checkpoint，离线评测）
 ```
 
 置信度阈值和边界内缩目前用脚本内默认值（0.90 / 1.0 秒）；如需按批次调整，可改用命令行方式（见下）直接传 `--threshold` / `--trim-margin`。
@@ -114,7 +123,8 @@ python -m scripts.presort.auto_presort_apply  --dir <同一目录> --out <sorted
 - **泄漏（cross_split_leak）**：同名样本同时出现在 train 和 val，会导致评估虚高，应清理。
 - **静默跳过（unrecognized）**：文件/目录名无法匹配到任何类别的样本，不会计入训练，需检查命名。
 - **label_mismatch**：切帧模式下目录名与 `label.txt` 内的标签不一致。
-- 归类依赖文件/目录名里的类别关键字匹配；`other` 这类兜底类可能把细分类别截断进去，留意。
+- **同源跨 split（source_leak）**：同一原始视频切出的片段同时进入 train 和 val，会导致评估虚高，应先处理。
+- 归类依赖文件/目录名里的类别关键字匹配。pet 当前固定为 `eat`、`drink`、`active`、`resting` 四类；样本不能再使用 `other` 代替 `active` 或 `resting`。
 
 确认无误后回车继续，脚本才会真正开始改 config 和训练。
 
@@ -125,7 +135,7 @@ python -m scripts.presort.auto_presort_apply  --dir <同一目录> --out <sorted
 
 ## 注意事项
 
-- `run_train_distill.py` 会改写 `config.yaml`（写入本批数据集路径、类别、teacher 路径等）。YAML 重写会**丢掉原有注释**，但每次改写前都会生成一个带时间戳的 `.bak` 备份（如 `config.yaml.20260715-1930.bak`），需要时可从备份恢复。
+- `run_train_distill.py` 会改写 `config.yaml`（写入本批数据集路径、类别、teacher 路径等）。YAML 重写会**丢掉原有注释**，但每次改写前都会在 `config/backups/` 生成一个带时间戳的 `.bak` 备份（如 `config/backups/config.yaml.20260715-1930.bak`），需要时可从备份恢复。
 - **合并不可逆**：当检测到无法确定日期的旧快照目录（ambiguous）时，脚本会打印自动选出的最新旧快照并要求输入 `yes` 确认后才合并，其它输入一律中止，避免误合并。
 
 ## 维护

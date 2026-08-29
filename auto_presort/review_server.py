@@ -242,11 +242,20 @@ def make_multi_server(dirs, port=8765):
     """
     norm_dirs = [os.path.realpath(d) for d in dirs]
     common = os.path.commonpath(norm_dirs) if len(norm_dirs) > 1 else os.path.dirname(norm_dirs[0])
-    from auto_presort.other_split import build_prefixes, resolve_prefix
+    build_prefixes = lambda _common, _dirs: prefixes
+    prefixes = sorted(
+        [(os.path.relpath(directory, common).replace("\\", "/"), directory) for directory in norm_dirs],
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
     prefixes = build_prefixes(common, norm_dirs)  # [(prefix, physical_dir)], 最长前缀优先
 
     def resolve(rel):
-        return resolve_prefix(prefixes, rel)
+        normalized = rel.replace("\\", "/").lstrip("/")
+        for prefix, directory in prefixes:
+            if normalized.startswith(prefix + "/"):
+                return directory, normalized[len(prefix) + 1:]
+        return None, None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
