@@ -65,6 +65,24 @@
   use numbered 1/2 menus in `pipeline_config._ask_choice`, `run_test._interactive_args`,
   and the matching `.bat` files. Free-text fields (site, date, checkpoint path) stay typed.
 
+- Flat scene retrain is launched by `6_run_scene_retrain.bat` /
+  `scripts.scene_retrain.pipeline`. There is **no site dimension**: a new video
+  batch is labeled in place (`auto_presort` writes `.autopresort/` next to the
+  videos), reviewed once in the browser (Finish button → `POST /api/finish`
+  writes `_review_state.json`, which the orchestrator polls), then
+  apply → YOLO-crop into `pc.snapshot_dir(species, date)` → backfill the latest
+  old snapshot via `run_train_distill.merge_and_report(assume_yes=True)` →
+  `train_and_distill`. `merge_and_report` / `train_and_distill` in
+  `run_train_distill.py` are the single source of merge/train semantics — the
+  interactive script B and the unattended orchestrator share them, so change
+  merge behavior in one place only. Workspace:
+  `SPECIES[species]["raw_root"]/_retrain/<date>/` (job.json, `sorted-<date>/`,
+  `_review_state.json`). Hard gates: no clips after apply, or zero samples for
+  any class after merge → abort; leaks/mismatches only print [WARN] (matching
+  script B's interactive semantics). Must run from the project root
+  (`config.yaml` is cwd-relative). The legacy 2a–5 `.bat` launchers are
+  unchanged and stay the manual fallback.
+
 - Pet normal behavior uses exactly four labels in this order: `eat`, `drink`,
   `active`, `resting`. New data, checkpoints, and offline evaluation must not
   use an `other` class. The former `other` re-split launchers/tools were retired

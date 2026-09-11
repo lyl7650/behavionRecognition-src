@@ -5,9 +5,9 @@ import urllib.error
 import urllib.request
 
 
-def _start(batch_dir):
+def _start(batch_dir, state_file=None):
     rs = importlib.import_module("auto_presort.review_server")
-    server = rs.make_server(str(batch_dir), port=0)  # port=0 -> random free port
+    server = rs.make_server(str(batch_dir), port=0, state_file=state_file)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
@@ -248,5 +248,42 @@ def test_api_videos_includes_conf_tier(tmp_path):
 
         v3 = next(x for x in items if x["rel_path"] == "v3.mp4")
         assert v3["conf_tier"] is None, "No segment_levels → null tier"
+    finally:
+        server.shutdown()
+
+
+def _post_finish(base):
+    req = urllib.request.Request(
+        f"{base}/api/finish", data=b"{}",
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+
+def test_api_finish_writes_explicit_state_file(tmp_path):
+    _seed(tmp_path)
+    (tmp_path / "v1.mp4").write_bytes(b"0123456789ABCDEF")  # stats walk real files
+    state = tmp_path / "retrain_ws" / "_review_state.json"
+    server, base = _start(tmp_path, state_file=str(state))
+    try:
+        out = _post_finish(base)
+        assert out["ok"] is True
+        assert out["state_file"] == str(state)
+        data = json.loads(state.read_text(encoding="utf-8"))
+        assert data["status"] == "finished"
+        assert data["stats"]["total_videos"] == 1
+        assert "finished_at" in data
+    finally:
+        server.shutdown()
+
+
+def test_api_finish_default_state_file_in_autopresort(tmp_path):
+    _seed(tmp_path)
+    server, base = _start(tmp_path)
+    try:
+        _post_finish(base)
+        default = tmp_path / ".autopresort" / "review_state.json"
+        data = json.loads(default.read_text(encoding="utf-8"))
+        assert data["status"] == "finished"
     finally:
         server.shutdown()

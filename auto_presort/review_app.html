@@ -216,6 +216,10 @@
       <span id="confSegCount"></span>
       <button id="boxToggle" class="fbtn" style="flex:0 0 auto; max-width:none; padding:5px 12px;"
               title="Toggle YOLO detection boxes (B)">Boxes: off</button>
+      <button id="finishBtn" style="flex:0 0 auto; max-width:none; padding:5px 12px;
+              border:1px solid var(--line); border-radius:8px; background:var(--panel-hi);
+              color:var(--fg); font:inherit; cursor:pointer;"
+              title="Finish review: notify the retrain pipeline and continue automatically">Finish</button>
       <span id="status"></span>
     </div>
     <div id="legend"></div>
@@ -671,6 +675,18 @@ $("confSlider").oninput = e => {
   syncConfUI();
 };
 $("boxToggle").onclick = () => { setBoxes(!showBoxes); $("boxToggle").blur(); };
+$("finishBtn").onclick = async () => {          // retrain pipeline polls /api/finish state
+  if (!confirm("Finish review? Unapproved videos will be skipped by the apply step.")) return;
+  try {
+    await api("/api/finish", { method: "POST",
+      headers: {"Content-Type": "application/json"}, body: "{}" });
+    $("status").textContent = "Finished — pipeline continues, you can close this page";
+    $("finishBtn").disabled = true;
+  } catch (e) {
+    $("status").textContent = "Finish failed: " + e.message;
+  }
+  $("finishBtn").blur();
+};
 for (const btn of document.querySelectorAll(".fbtn")) {
   btn.onclick = () => {
     filter = btn.dataset.f;

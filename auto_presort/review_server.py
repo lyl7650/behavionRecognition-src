@@ -5,11 +5,13 @@ GET  /api/videos     → [{rel_path, approved, duration, n_segments, class_names
 GET  /api/stats      → {total_videos, labeled_videos, approved_videos, labels}
 GET  /api/doc?rel=X  → 完整 doc
 POST /api/doc        → {rel_path, action: save|approve, segments?} → 更新后的 doc
+POST /api/finish     → 写状态文件（供编排器轮询），状态文件路径见 make_server
 GET  /video/<rel>    → 视频文件（支持 Range/206，长视频拖动必需）
 """
 import json
 import os
 import posixpath
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -51,7 +53,14 @@ def compute_stats(batch_dir):
     }
 
 
-def make_server(batch_dir, port=8765):
+def _default_state_file(batch_dir):
+    """未显式指定状态文件时，落到 batch_dir/.autopresort/ 下（随标签一起存放）。"""
+    return os.path.join(batch_dir, store.STORE_DIRNAME, "review_state.json")
+
+
+def make_server(batch_dir, port=8765, state_file=None):
+    state_file = state_file or _default_state_file(batch_dir)
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # 静默访问日志
             pass
@@ -121,6 +130,9 @@ def make_server(batch_dir, port=8765):
 
         def do_POST(self):
             parsed = urlparse(self.path)
+            if parsed.path == "/api/finish":
+                self._finish()
+                return
             if parsed.path != "/api/doc":
                 self._json({"error": "not found"}, 404)
                 return
@@ -136,6 +148,24 @@ def make_server(batch_dir, port=8765):
                 self._json({"error": "not found"}, 404)
             except (KeyError, ValueError) as e:
                 self._json({"error": str(e)}, 400)
+
+        def _finish(self):
+            """写编排器轮询的状态文件（原子替换），返回最新统计。
+
+            不做"全部已批准"硬校验：apply 步骤本来就会跳过未批准视频，
+            这里只如实记录当时的 stats，让闸门语义保持单一来源。
+            """
+            state = {
+                "status": "finished",
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+                "stats": compute_stats(batch_dir),
+            }
+            os.makedirs(os.path.dirname(state_file), exist_ok=True)
+            tmp = state_file + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, state_file)
+            self._json({"ok": True, "state_file": state_file, "stats": state["stats"]})
 
         def _serve_video(self, rel):
             path = self._safe_video_path(rel)

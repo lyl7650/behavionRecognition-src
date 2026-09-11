@@ -3,6 +3,7 @@
 Light entry point: stdlib only (no torch/YOLO). Console prints in English
 (cp1252-safe, consistent with .bat convention).
 Usage: python auto_presort_review.py --dir <raw_batch_dir> [--port 8765]
+       [--state-file <path>]   # retrain pipeline polls this file after Finish
 """
 import argparse
 import sys
@@ -13,11 +14,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True, help="raw batch dir (contains .autopresort/)")
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--state-file", default=None,
+                    help="where POST /api/finish writes its state JSON "
+                         "(default: <dir>/.autopresort/review_state.json)")
     a = ap.parse_args(argv)
 
     from auto_presort.review_server import make_server
     try:
-        server = make_server(a.dir, port=a.port)
+        server = make_server(a.dir, port=a.port, state_file=a.state_file)
     except OSError:
         print(f"[ERROR] Port {a.port} is already in use.")
         print("        Another review window is probably still open. Close it and try again,")
