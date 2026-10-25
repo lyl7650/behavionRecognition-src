@@ -66,6 +66,77 @@ def test_resolve_videos_dir_accepts_batch(tmp_path):
     assert got == str(tmp_path)
 
 
+def test_group_videos_by_animal_profile(tmp_path):
+    for folder, profile in (("one", "pet"), ("two", "rabbit"), ("three", "pet")):
+        record = tmp_path / folder
+        record.mkdir()
+        (record / "video.mp4").write_bytes(b"video")
+        (record / "metadata.json").write_text(
+            json.dumps({"animal_profile": profile}), encoding="utf-8")
+
+    groups = pl.group_videos_by_animal_profile(str(tmp_path))
+    assert {key: len(value) for key, value in groups.items()} == {"pet": 2, "rabbit": 1}
+
+
+def test_group_videos_by_animal_profile_fails_on_missing_or_invalid_profile(tmp_path):
+    record = tmp_path / "record"
+    record.mkdir()
+    (record / "video.mp4").write_bytes(b"video")
+    (record / "metadata.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        pl.group_videos_by_animal_profile(str(tmp_path))
+
+
+def test_stage_profile_videos_hardlinks_video_and_copies_metadata(tmp_path):
+    source = tmp_path / "source" / "record"
+    source.mkdir(parents=True)
+    video = source / "video.mp4"
+    metadata = source / "metadata.json"
+    video.write_bytes(b"video")
+    metadata.write_text('{"animal_profile":"pet"}', encoding="utf-8")
+    target = tmp_path / "stage"
+
+    pl.stage_profile_videos([(video, metadata)], target, species="pet", batch_id="2026-10-05")
+
+    staged_video = target / "00000000" / "video.mp4"
+    staged_metadata = target / "00000000" / "metadata.json"
+    assert os.stat(staged_video).st_ino == os.stat(video).st_ino
+    assert staged_metadata.read_text(encoding="utf-8") == metadata.read_text(encoding="utf-8")
+    from scripts.pipeline.lineage import store
+    ingests = store.find_records(store.INGEST_PATH,
+                                 raw_path=os.path.abspath(staged_video))
+    assert len(ingests) == 1
+    assert ingests[-1]["source_path"] == os.path.abspath(video)
+    assert ingests[-1]["species"] == "pet"
+    assert ingests[-1]["batch_id"] == "2026-10-05"
+
+
+def test_auto_profile_batch_runs_larger_group_first_with_species_defaults(
+    monkeypatch, tmp_path
+):
+    root = tmp_path / "raw"
+    root.mkdir()
+    records = [(Path("video"), Path("metadata"))]
+    monkeypatch.setattr(pl, "group_videos_by_animal_profile", lambda _root: {
+        "pet": records,
+        "rabbit": records * 2,
+    })
+    monkeypatch.setattr(pl, "stage_profile_videos", lambda _records, stage, *, species, batch_id: str(stage))
+    monkeypatch.setattr(pl, "resolve_videos_dir", lambda path: path)
+    jobs = []
+    monkeypatch.setattr(pl, "run_job", jobs.append)
+
+    pl.run_auto_profile_batch(str(root), "2026-10-05")
+
+    assert [job.species for job in jobs] == ["rabbit", "pet"]
+    assert all(job.frames is False for job in jobs)
+    assert all(job.date == "2026-10-05" for job in jobs)
+    assert all(job.teacher_checkpoint == pl.build_retrain_context(
+        job.species, job.date
+    )["teacher_checkpoint"] for job in jobs)
+
+
 def test_ask_job_inputs_uses_default_teacher_and_clip_mode(tmp_path):
     (tmp_path / "a.mp4").write_bytes(b"x")
     ctx = build_retrain_context("rabbit", "2026-09-10")

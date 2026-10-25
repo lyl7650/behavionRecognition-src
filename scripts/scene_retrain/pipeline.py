@@ -18,12 +18,16 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import NoReturn
 
@@ -83,15 +87,89 @@ def resolve_videos_dir(path_text: str) -> str:
     return str(path)
 
 
-def ask_job_inputs(ctx: dict, input_fn=None) -> JobSpec:
+def group_videos_by_animal_profile(videos_dir: str) -> dict[str, list[tuple[Path, Path]]]:
+    """Validate every video has a sibling metadata.json and group by profile."""
+    from scripts.presort.auto_presort_label import collect_videos
+
+    root = Path(videos_dir)
+    groups: dict[str, list[tuple[Path, Path]]] = defaultdict(list)
+    errors = []
+    for rel in collect_videos(str(root)):
+        video = root.joinpath(*rel.split("/"))
+        metadata = video.parent / "metadata.json"
+        if not metadata.is_file():
+            errors.append(f"missing metadata.json: {video}")
+            continue
+        try:
+            with metadata.open(encoding="utf-8-sig") as stream:
+                data = json.load(stream)
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"cannot read {metadata}: {exc}")
+            continue
+        profile = data.get("animal_profile")
+        if not isinstance(profile, str) or profile.strip() not in pc.SPECIES:
+            errors.append(f"invalid animal_profile in {metadata}: {profile!r}")
+            continue
+        groups[profile.strip()].append((video, metadata))
+
+    if errors:
+        preview = "\n".join(f"  - {item}" for item in errors[:20])
+        remaining = len(errors) - min(len(errors), 20)
+        suffix = f"\n  ... and {remaining} more" if remaining else ""
+        _fail("1/6 profile scan", f"{len(errors)} video metadata error(s):\n{preview}{suffix}")
+    if not groups:
+        _fail("1/6 profile scan", f"no videos found under {root}")
+    return dict(groups)
+
+
+def stage_profile_videos(
+    records: list[tuple[Path, Path]],
+    staging_dir: Path,
+    *,
+    species: str,
+    batch_id: str,
+) -> str:
+    """Create a lightweight per-profile tree using hard-linked videos."""
+    from scripts.pipeline.lineage.store import record_ingest
+
+    for index, (video, metadata) in enumerate(records):
+        # A short isolated folder avoids Windows MAX_PATH issues from the deep
+        # deployment/device/date/record_uuid source hierarchy.
+        target_dir = staging_dir / f"{index:08d}"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        os.link(video, target_dir / video.name)
+        shutil.copy2(metadata, target_dir / metadata.name)
+        record_ingest(
+            str(video), str(target_dir / video.name), species=species,
+            batch_id=batch_id, metadata={"source_kind": "aws_backup"},
+        )
+    return str(staging_dir)
+
+
+def ask_job_inputs(
+    ctx: dict,
+    input_fn=None,
+    videos_dir: str | None = None,
+    teacher_checkpoint: str | None = None,
+    frames: bool | None = None,
+) -> JobSpec:
     if input_fn is None:
         input_fn = input
-    videos_dir = resolve_videos_dir(input_fn("Videos dir (raw batch folder): "))
-    ckpt = input_fn(
-        f"Teacher checkpoint [default {ctx['teacher_checkpoint']}]: "
-    ).strip().strip('"')
-    mode = input_fn("Snapshot mode: 1) video clips (default) 2) frames [1]: ").strip()
-    frames = mode == "2"
+    if videos_dir is None:
+        videos_dir = input_fn("Videos dir (raw batch folder): ")
+    videos_dir = resolve_videos_dir(videos_dir)
+
+    if teacher_checkpoint is None:
+        ckpt = input_fn(
+            f"Teacher checkpoint [default {ctx['teacher_checkpoint']}]: "
+        ).strip().strip('"')
+    else:
+        ckpt = teacher_checkpoint.strip().strip('"')
+
+    if frames is None:
+        mode = input_fn("Snapshot mode: 1) video clips (default) 2) frames [1]: ").strip()
+        frames = mode == "2"
+
     return JobSpec(
         species=ctx["species"], date=ctx["date"], videos_dir=videos_dir,
         teacher_checkpoint=ckpt or ctx["teacher_checkpoint"],
@@ -187,6 +265,7 @@ def run_apply_and_crop(job: JobSpec, sorted_dir: str, snapshot_dir: str) -> str:
     cfg = crop.default_config()
     cfg.update({
         "input_base_dir": sorted_dir,
+        "lineage_species": job.species,
         "output_base_dir": snapshot_dir,
         "class_names": sp["class_names"],
         "yolo_model_path": sp["yolo_model"],
@@ -235,24 +314,44 @@ def run_merge(job: JobSpec, ctx: dict, snapshot_dir: str) -> dict:
         from scripts.pipeline.run_train_distill import print_health_report
         print_health_report(report, job.classes)
     check_health_gates(stage, report, job.classes)
+    from scripts.pipeline.lineage.store import write_snapshot
+    manifest_path = write_snapshot(snapshot_dir, species=job.species,
+                                   date=job.date, frames=job.frames)
+    log(f"[{stage}] dataset manifest: {manifest_path}")
     log(f"[{stage}] health checks passed")
     return report
 
 
 # ---------- entry ----------
 
-def main() -> None:
-    ctx = ask_retrain_context()
-    job = ask_job_inputs(ctx)
-    # ask_retrain_context 在问模式之前建 ctx（默认 clip 快照）；模式确定后必须
-    # 按 job.frames 重建，否则 frames 模式会裁进 <date>/videos 这个 clip 快照。
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the flat scene retrain pipeline.")
+    parser.add_argument("--species", choices=sorted(pc.SPECIES), help="species to retrain")
+    parser.add_argument("--date", help="snapshot date in YYYY-MM-DD format")
+    parser.add_argument("--videos-dir", help="raw batch directory containing videos")
+    parser.add_argument("--auto-profile", action="store_true",
+                        help="group videos by metadata.json animal_profile and retrain sequentially")
+    parser.add_argument("--teacher-checkpoint", help="teacher checkpoint used for auto-labeling")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--frames", action="store_true", help="train from frame snapshots")
+    mode.add_argument("--clips", action="store_true", help="train from video clips (default)")
+    return parser.parse_args(argv)
+
+
+def ask_context(args: argparse.Namespace) -> dict:
+    if args.species is None and args.date is None:
+        return ask_retrain_context()
+
+    species = args.species or pc._ask_species(input)
+    date = args.date or pc._ask_date(input, pc._today_str)
+    return build_retrain_context(species, date)
+
+
+def run_job(job: JobSpec) -> None:
     ctx = build_retrain_context(job.species, job.date, frames=job.frames)
     workspace = Path(ctx["workspace"])
     workspace.mkdir(parents=True, exist_ok=True)
-    job_path = workspace / "job.json"
-    job.write(job_path)
-    # 上次运行的 Finish 状态文件必须清掉：残留的 status=finished 会让本次的
-    # Review 闸门被静默跳过（唯一人工环节失效）。
+    job.write(workspace / "job.json")
     state_file = Path(ctx["state_file"])
     if state_file.exists():
         state_file.unlink()
@@ -263,7 +362,6 @@ def main() -> None:
     run_subprocess("2/6 auto label", [
         sys.executable, "-m", "scripts.presort.auto_presort_label",
         "--species", job.species, "--dir", job.videos_dir,
-        "--checkpoint", job.teacher_checkpoint,
         "--threshold", str(job.threshold),
         "--trim-margin", str(job.trim_margin),
     ])
@@ -272,12 +370,77 @@ def main() -> None:
     run_merge(job, ctx, snapshot_dir)
     teacher_path = train_and_distill(job.species, snapshot_dir, frames=job.frames)
 
-    log("=== all done ===")
+    log(f"=== {job.species} retrain done ===")
     log(f"teacher: {teacher_path}")
     log("[WARNING] the deployment artifact is the student's *_ema.pth "
         "(under outputs/<species>/<date>/), not the teacher checkpoint.")
+
+
+def run_auto_profile_batch(videos_dir: str, date: str) -> None:
+    root = Path(videos_dir.strip().strip('"'))
+    if not root.is_dir():
+        _fail("1/6 job setup", f"videos dir does not exist: {root}")
+    groups = group_videos_by_animal_profile(str(root))
+    order = {species: index for index, species in enumerate(pc.SPECIES)}
+    sorted_groups = sorted(groups.items(), key=lambda item: (-len(item[1]), order[item[0]]))
+    log("[1/6 profile scan] profile counts: " + ", ".join(
+        f"{species}={len(records)}" for species, records in sorted_groups))
+
+    # Keep source videos untouched; hardlinks avoid duplicating potentially large
+    # recordings. The temporary directory is outside the scanned raw batch.
+    with tempfile.TemporaryDirectory(
+        prefix="scene-retrain-", dir=str(root.parent)
+    ) as temp_root:
+        for index, (species, records) in enumerate(sorted_groups, start=1):
+            log(f"=== profile batch {index}/{len(sorted_groups)}: {species} ({len(records)} videos) ===")
+            profile_dir = Path(temp_root) / species
+            staged_dir = stage_profile_videos(records, profile_dir, species=species, batch_id=date)
+            ctx = build_retrain_context(species, date, frames=False)
+            job = JobSpec(
+                species=species,
+                date=date,
+                videos_dir=resolve_videos_dir(staged_dir),
+                teacher_checkpoint=ctx["teacher_checkpoint"],
+                classes=list(ctx["classes"]),
+                frames=False,
+            )
+            run_job(job)
+    log("=== all profile batches done ===")
+    log("Next: evaluate each resulting student model with 5_run_test.bat before deployment.")
+
+
+def main(argv=None) -> None:
+    if argv is None:
+        ctx = ask_retrain_context()
+        job = ask_job_inputs(ctx)
+        run_job(job)
+        log("Next: evaluate it with 5_run_test.bat before deployment.")
+        return
+
+    args = parse_args(argv)
+    if args.auto_profile:
+        if not args.date or not args.videos_dir:
+            _fail("arguments", "--auto-profile requires --date and --videos-dir")
+        if args.species or args.teacher_checkpoint or args.frames or args.clips:
+            _fail("arguments", "--auto-profile selects species, teacher, and clip mode from defaults; do not pass overrides")
+        run_auto_profile_batch(args.videos_dir, args.date)
+        return
+
+    ctx = ask_context(args)
+    if args.frames:
+        frames = True
+    elif args.clips:
+        frames = False
+    else:
+        frames = None
+    job = ask_job_inputs(
+        ctx,
+        videos_dir=args.videos_dir,
+        teacher_checkpoint=args.teacher_checkpoint,
+        frames=frames,
+    )
+    run_job(job)
     log("Next: evaluate it with 5_run_test.bat before deployment.")
 
-
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
