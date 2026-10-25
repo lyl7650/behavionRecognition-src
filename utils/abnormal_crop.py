@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 from ultralytics import YOLO
+from scripts.pipeline.lineage.store import record_derivation, record_input_if_root
 
 # ================= 配置参数 =================
 INPUT_BASE_DIRS = [
@@ -303,7 +304,19 @@ def process_video(video_path, class_name, class_counters, model, parent_dir_name
         try:
             seq_dir.mkdir(parents=True, exist_ok=True)
             for idx, img in enumerate(seq_data['frames']):
-                write_image(seq_dir / f"frame_{idx:04d}.jpg", img)
+                frame_path = seq_dir / f"frame_{idx:04d}.jpg"
+                write_image(frame_path, img)
+                record_input_if_root(str(video_path), species=(cfg or {}).get("lineage_species"))
+                record_derivation(
+                    str(frame_path), str(video_path), operation="yolo_crop_frame",
+                    label=class_name,
+                    parameters={
+                        "segment_index": i,
+                        "frame_index": idx,
+                        "frames_per_clip": frames_per_clip,
+                        "expand_ratio": expand_ratio,
+                    },
+                )
             with open(seq_dir / "label.txt", "w", encoding="utf-8") as f:
                 f.write(str(label_val))
             class_counters[class_name] = seq_idx + 1

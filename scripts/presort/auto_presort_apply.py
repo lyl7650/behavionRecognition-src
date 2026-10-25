@@ -11,6 +11,7 @@ import sys
 
 from auto_presort import store
 from auto_presort.apply_clips import plan_cuts, clip_output_name, build_ffmpeg_cmd, duration_ok
+from scripts.pipeline.lineage.store import record_derivation, record_input_if_root
 
 
 def _probe_duration(path):
@@ -48,6 +49,12 @@ def run_apply(batch_dir, out_dir, tolerance=0.25):
         if not duration_ok(expected, actual, tolerance):
             warnings.append(
                 f"duration mismatch: {name} expected={expected:.2f}s actual={actual:.2f}s")
+        record_input_if_root(src)
+        record_derivation(
+            dst, src, operation="presort_cut", label=cut["label"],
+            parameters={"start": cut["start"], "end": cut["end"],
+                        "batch_dir": os.path.abspath(batch_dir)},
+        )
         written.append(dst)
     print(f"[OK] Wrote {len(written)} clip(s) to {out_dir}")
     for w in warnings:

@@ -7,6 +7,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 from ultralytics import YOLO
+from scripts.pipeline.lineage.store import record_derivation, record_input_if_root
 
 INPUT_BASE_DIRS = [
     r"E:\ActionRecognition\behavionRecognition-src\dataset\raw_videos\pet\normal\ft-record\sorted-0629",
@@ -473,7 +474,7 @@ def process_video(video_path, class_name, class_counters, model, parent_dir_name
     for i, seq_data in valid_seqs:
         relative_clip_path = get_train_clip_relative_path(class_name, video_stem, i)
 
-        out_path = Path(OUTPUT_BASE_DIR) / "train" / relative_clip_path
+        out_path = Path(output_base_dir) / "train" / relative_clip_path
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -498,6 +499,18 @@ def process_video(video_path, class_name, class_counters, model, parent_dir_name
                     frm = cv2.resize(frm, (crop_w, crop_h))
                 writer.write(frm)
             writer.release()
+
+            record_input_if_root(str(video_path), species=(cfg or {}).get("lineage_species"))
+            record_derivation(
+                str(out_path), str(video_path), operation="yolo_crop_clip",
+                label=class_name,
+                parameters={
+                    "segment_index": i,
+                    "fps": fps,
+                    "expand_ratio": cfg["expand_ratio"] if cfg else EXPAND_RATIO,
+                    "max_clip_duration": cfg["max_clip_duration"] if cfg else MAX_CLIP_DURATION,
+                },
+            )
 
             class_counters[class_name] = class_counters.get(class_name, 0) + 1
             stats["segments_saved"] += 1

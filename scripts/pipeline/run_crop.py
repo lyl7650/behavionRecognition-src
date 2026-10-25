@@ -44,6 +44,7 @@ def main(argv=None):
     cfg = crop.default_config()
     cfg.update({
         "input_base_dir": sorted_dir,
+        "lineage_species": species,
         "output_base_dir": snapshot,
         "class_names": sp["class_names"],
         "yolo_model_path": sp["yolo_model"],

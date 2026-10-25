@@ -132,6 +132,10 @@ def main(argv=None):
         report = sm.health_report(new_snapshot, class_names, frames)
         print_health_report(report, class_names)
 
+    from scripts.pipeline.lineage.store import write_snapshot
+    manifest_path = write_snapshot(new_snapshot, species=species, date=date, frames=frames)
+    print(f"Dataset manifest: {manifest_path}")
+
     input("\nHealth check OK? Press Enter to continue, Ctrl+C to abort")
 
     teacher_path = train_and_distill(species, new_snapshot, frames)
