@@ -80,3 +80,34 @@ def verify_and_load_teacher(checkpoint_path, class_names, device="cuda"):
             f"checkpoint load mismatch missing={hard_missing} unexpected={list(unexpected)}")
     model = model.to(device).eval()
     return model, meta
+
+
+def verify_and_load_behavior_model(checkpoint_path, class_names, device="cuda"):
+    """Load a supported teacher or RepViT-GRU student checkpoint for pre-labeling."""
+    import torch
+
+    meta = resolve_meta(checkpoint_path, class_names)
+    raw = torch.load(checkpoint_path, map_location="cpu")
+    state = {k.replace("base.model.", "").replace("module.", ""): v
+             for k, v in raw.items()}
+
+    if "fc.weight" in state and "gru.weight_ih_l0" in state:
+        check_head_dim({"head.1.weight": state["fc.weight"]},
+                       expected_num_classes=len(class_names))
+        from models.student import RepViT_GRU
+
+        model = RepViT_GRU(num_classes=len(class_names), pretrained=False)
+        model.load_state_dict(state, strict=True)
+    else:
+        from models.teacher import SwinTeacher
+
+        check_head_dim(state, expected_num_classes=len(class_names))
+        model = SwinTeacher(checkpoint_path=None, num_classes=len(class_names))
+        missing, unexpected = model.model.load_state_dict(state, strict=False)
+        hard_missing = [k for k in missing if not k.startswith("head.")]
+        if hard_missing or unexpected:
+            raise ValueError(
+                f"checkpoint load mismatch missing={hard_missing} unexpected={list(unexpected)}")
+        model = model.model
+
+    return model.to(device).eval(), meta

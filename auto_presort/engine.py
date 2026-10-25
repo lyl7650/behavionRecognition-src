@@ -19,7 +19,8 @@ def _window_no_animal_ratio(start, end, no_animal_spans):
 
 
 def label_video(video_path, rel_path, source_id, track,
-                read_window_frames_fn, classify_frames_fn, meta, params):
+                read_window_frames_fn, classify_frames_fn, meta, params,
+                classify_window_fn=None):
     duration = track["frames"] / track["fps"] if track["fps"] else 0.0
     windows = tl.iter_windows(duration, params["window_sec"], params["stride_sec"])
     no_animal = track["no_animal_spans"]
@@ -29,8 +30,11 @@ def label_video(video_path, rel_path, source_id, track,
         if _window_no_animal_ratio(start, end, no_animal) >= params["no_animal_overlap"]:
             preds.append((center, None, 0.0))
             continue
-        frames_bgr, boxes = read_window_frames_fn(video_path, start, end, track["fps"])
-        label, conf = classify_frames_fn(frames_bgr, boxes)
+        if classify_window_fn is None:
+            frames_bgr, boxes = read_window_frames_fn(video_path, start, end, track["fps"])
+            label, conf = classify_frames_fn(frames_bgr, boxes)
+        else:
+            label, conf = classify_window_fn(start, end)
         preds.append((center, label, conf))
 
     # 逐档切段：merge → split_out_no_animal → trim，复用现有纯函数。
@@ -99,7 +103,10 @@ def build_real_classifier(model, class_names, params):
             expand_ratio=params["expand_ratio"],
         ).unsqueeze(0).to(next(model.parameters()).device)
         with torch.no_grad():
-            logits, _ = model(x)
+            if hasattr(model, "forward_seq"):
+                logits = model.forward_seq(x)
+            else:
+                logits, _ = model(x)
             prob = torch.softmax(logits, dim=1)[0]
             conf, idx = float(prob.max()), int(prob.argmax())
         return class_names[idx], conf
