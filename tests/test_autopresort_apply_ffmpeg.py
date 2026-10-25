@@ -30,7 +30,7 @@ def _probe_duration(path):
 
 
 def test_apply_cuts_only_approved_and_names_with_source_id(tmp_path):
-    apply_mod = importlib.import_module("auto_presort_apply")
+    apply_mod = importlib.import_module("scripts.presort.auto_presort_apply")
     st = importlib.import_module("auto_presort.store")
 
     batch = tmp_path / "batch"; batch.mkdir()
@@ -61,7 +61,7 @@ def test_apply_cuts_only_approved_and_names_with_source_id(tmp_path):
 
 
 def test_apply_reports_duration_mismatch(tmp_path):
-    apply_mod = importlib.import_module("auto_presort_apply")
+    apply_mod = importlib.import_module("scripts.presort.auto_presort_apply")
     st = importlib.import_module("auto_presort.store")
     batch = tmp_path / "batch"; batch.mkdir()
     _make_video(batch / "v1.mp4", seconds=5)
