@@ -1,0 +1,52 @@
+{
+  "source_audit": "E:\\ActionRecognition\\behavionRecognition-src\\experiments\\rabbit_streaming_memory\\manifests\\audit_full_2026-10-24.json",
+  "source_dataset_root": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22",
+  "policy": "read-only selection: exclude unreadable videos from training and validation; for byte-identical cross-split pairs, retain validation copy and exclude only train copy",
+  "excluded_invalid_paths": [
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\6311adea-0-33_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\move-00.00.03.043-00.00.30.116_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\0961b0b0-27.788-86.953_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\4e354920-0-16.5_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\093bb835-0-5_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\0961b0b0-0-26.694_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\b087309d-0-28.25_clip-1.mp4"
+  ],
+  "excluded_train_duplicate_paths": [
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\CAM1_20260609_eat_001_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\sorted-0624__CAM1_20260609_eat_005_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\CAM1_20260604_171914_6b7bea33-a171-46bd-bad1-6865632f8a37_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\CAM1_20260604_173527_2b579e36-6e31-4a85-92bd-5cb72a1d2fd4_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\CAM1_20260609_rest (2)_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\CAM1_20260609_rest_001-00.00.01.536-00.00.33.506_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\CAM3_20260604_171914_e4ffc586-915b-4532-9a56-d9d0ba8b8651_clip-1.mp4"
+  ],
+  "retained_validation_duplicate_paths": [
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\eating\\CAM1_20260609_eat_005_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\eating\\sorted-0624__CAM1_20260609_eat_001_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260604_171914_6b7bea33-a171-46bd-bad1-6865632f8a37_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260604_173527_2b579e36-6e31-4a85-92bd-5cb72a1d2fd4_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260609_rest_002_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260609_rest_023-00.00.02.565-00.00.33.506_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM3_20260604_171914_e4ffc586-915b-4532-9a56-d9d0ba8b8651_clip-1.mp4"
+  ],
+  "approved": false,
+  "requires_explicit_user_approval": true,
+  "expected_counts_after_selection": {
+    "train": {
+      "active": 351,
+      "drinking": 31,
+      "eating": 242,
+      "resting": 409
+    },
+    "val": {
+      "active": 88,
+      "drinking": 9,
+      "eating": 63,
+      "resting": 104
+    }
+  },
+  "selection_sha256_basis": {
+    "audit_sha256": "e61ebff7af0f5d322dc312f0b2d5bb098b8fed3932eac4e31b99a864e82bec74",
+    "policy_version": "keep-val-exclude-train-duplicates-v1"
+  }
+}

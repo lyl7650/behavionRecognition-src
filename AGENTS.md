@@ -76,12 +76,23 @@
   `run_train_distill.py` are the single source of merge/train semantics — the
   interactive script B and the unattended orchestrator share them, so change
   merge behavior in one place only. Workspace:
+  `6_run_scene_retrain.bat` accepts optional `--videos-dir` and `--date` arguments
+  for callers that already know the downloaded batch; without arguments it keeps
+  the existing interactive prompts. `--auto-profile --videos-dir <raw> --date <date>`
+  groups videos by sibling `metadata.json` `animal_profile`, fails before training
+  on missing/unsupported values, then processes groups serially by descending video
+  count (pet first on ties). It uses each species' configured teacher and defaults
+  to video clips; videos are staged with same-volume hardlinks, and browser Finish
+  review remains required for every species. The browser review gate is never skipped.
+  Auto-labeling uses the dashboard offline fusion (model probabilities + FSM + rules) from the configured absolute scripts under `E:\ActionRecognition\handover\ppc_dashboard`; pet labels remain exactly `eat`, `drink`, `active`, `resting`.
   `SPECIES[species]["raw_root"]/_retrain/<date>/` (job.json, `sorted-<date>/`,
   `_review_state.json`). Hard gates: no clips after apply, or zero samples for
   any class after merge → abort; leaks/mismatches only print [WARN] (matching
   script B's interactive semantics). Must run from the project root
   (`config.yaml` is cwd-relative). The legacy 2a–5 `.bat` launchers are
-  unchanged and stay the manual fallback.
+  unchanged and stay the manual fallback. The shared browser review server
+  keeps original videos untouched and creates H.264 review-cache copies when
+  an input codec is not browser-decodable.
 
 - Pet normal behavior uses exactly four labels in this order: `eat`, `drink`,
   `active`, `resting`. New data, checkpoints, and offline evaluation must not

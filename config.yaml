@@ -5,12 +5,12 @@ pipeline:
   frame_skip: 3
 task_configs:
   normal:
-    dataset_path: dataset/rabbit/2026-07-21/videos
+    dataset_path: dataset/rabbit/2026-08-01/videos
     class_names:
-    - eat
-    - drink
-    - active
     - resting
+    - active
+    - eating
+    - drinking
     finetune:
       checkpoint_path: None
       output_dir: outputs/rabbit/{date}/teacher_finetuned_{date}
@@ -106,7 +106,7 @@ distillation:
   mode_to_use: normal
   teacher_model: repvit_m1
   student_backbone: repvit_m1
-  teacher_checkpoint: outputs/rabbit/2026-08-01/teacher_finetuned_2026-08-01/rabbit_teacher_2026-08-01_ema-videos.pth
+  teacher_checkpoint: outputs/rabbit/2026-10-20/teacher_finetuned_2026-10-20/rabbit_teacher_2026-10-20_ema-videos.pth
   temperature: 4.0
   loss_weights:
     gt: 1.0

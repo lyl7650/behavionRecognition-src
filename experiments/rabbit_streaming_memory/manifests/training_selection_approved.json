@@ -1,0 +1,28 @@
+{
+  "source_audit": "E:\\ActionRecognition\\behavionRecognition-src\\experiments\\rabbit_streaming_memory\\manifests\\audit_final_2026-10-24.json",
+  "source_dataset_root": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22",
+  "policy": "authorized by user: delete seven unreadable training videos and seven byte-identical validation copies; do not alter retained training copies",
+  "excluded_invalid_paths": [],
+  "excluded_train_duplicate_paths": [],
+  "retained_validation_duplicate_paths": [],
+  "expected_counts_after_selection": {
+    "train": {
+      "active": 351,
+      "drinking": 31,
+      "eating": 244,
+      "resting": 414
+    },
+    "val": {
+      "active": 88,
+      "drinking": 9,
+      "eating": 61,
+      "resting": 99
+    }
+  },
+  "selection_sha256_basis": {
+    "audit_sha256": "2bb69caef7ddc95cc93f8cafdaf29e09ad3a7d356d6d0058ad40696b6c34d427",
+    "policy_version": "user-approved-delete-corrupt-and-val-duplicates-v1"
+  },
+  "approved": true,
+  "approved_by": "user instruction in conversation on 2026-10-24"
+}

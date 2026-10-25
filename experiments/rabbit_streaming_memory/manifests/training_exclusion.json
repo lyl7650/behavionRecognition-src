@@ -1,0 +1,17 @@
+{
+  "source_audit": "E:\\ActionRecognition\\behavionRecognition-src\\experiments\\rabbit_streaming_memory\\manifests\\audit.json",
+  "source_dataset_root": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22",
+  "policy": "exclude_only_the_audit_list; do_not_modify_source_data",
+  "excluded_paths": [
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\6311adea-0-33_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\move-00.00.03.043-00.00.30.116_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\0961b0b0-27.788-86.953_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\4e354920-0-16.5_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\093bb835-0-5_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\0961b0b0-0-26.694_clip-1.mp4",
+    "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\b087309d-0-28.25_clip-1.mp4"
+  ],
+  "excluded_count": 7,
+  "requires_explicit_user_approval": true,
+  "approved": false
+}

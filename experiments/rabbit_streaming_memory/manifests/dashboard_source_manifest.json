@@ -1,0 +1,28 @@
+{
+  "snapshot_date": "2026-10-24",
+  "dashboard_git_head": "8edc5aee337c6dee08b0f88e84d32ad87811e300",
+  "dashboard_source_files_unmodified": true,
+  "sources": {
+    "fusion_agent": {
+      "path": "E:\\ActionRecognition\\handover\\ppc_dashboard\\backend\\ml\\decision\\fusion_agent.py",
+      "sha256": "0376633c2ffcc5a4ae3f34dc44c0a565cfb030f3de7af5bf850fe3dc2e88aa94"
+    },
+    "rule_engine": {
+      "path": "E:\\ActionRecognition\\handover\\ppc_dashboard\\backend\\ml\\decision\\rule_engine.py",
+      "sha256": "9862663e083c80bc801726afb5f3484a438bc031a4544a4c9d390ea77885c7e8"
+    },
+    "geometry_utils": {
+      "path": "E:\\ActionRecognition\\handover\\ppc_dashboard\\backend\\ml\\decision\\utils.py",
+      "sha256": "72eb81df338e25a088f7ce25829777dd557ed4a5b11550bd2a9a14a27d505cc9"
+    },
+    "camera_defaults": {
+      "path": "E:\\ActionRecognition\\handover\\ppc_dashboard\\backend\\app\\domain\\cameras.py",
+      "sha256": "3d6ac4de17f0aa83f643e5d15603ec32d38fafb1e214887f91004c4cb2fa145f"
+    }
+  },
+  "notes": [
+    "fusion_agent is copied semantically into src/dashboard_fusion_snapshot.py; no import from or edits to dashboard project",
+    "The replay consumes 2 FPS saved probabilities and boxes, not dashboard crop/model output",
+    "Default camera detect_fps is 4.0; sampled replay cadence and inferred motion history differ"
+  ]
+}

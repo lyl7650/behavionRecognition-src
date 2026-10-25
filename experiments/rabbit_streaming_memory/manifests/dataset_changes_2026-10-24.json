@@ -1,0 +1,110 @@
+{
+  "date": "2026-10-24",
+  "actions": [
+    {
+      "action": "deleted",
+      "category": "unreadable_train_video",
+      "count": 7,
+      "files": [
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\6311adea-0-33_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\6311adea-0-33_clip-1.mp4"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\move-00.00.03.043-00.00.30.116_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\active\\move-00.00.03.043-00.00.30.116_clip-1.mp4"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\0961b0b0-27.788-86.953_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\0961b0b0-27.788-86.953_clip-1.mp4"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\4e354920-0-16.5_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\eating\\4e354920-0-16.5_clip-1.mp4"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\093bb835-0-5_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\093bb835-0-5_clip-1.mp4"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\0961b0b0-0-26.694_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\0961b0b0-0-26.694_clip-1.mp4"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\b087309d-0-28.25_clip-1.mp4",
+          "bytes": 258,
+          "sha256": "7817119d388f19407bdacbd714686f779bc1cf19bf9fb8e7438fde492f502be2",
+          "reason": "cannot open video: E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\train\\resting\\b087309d-0-28.25_clip-1.mp4"
+        }
+      ],
+      "authorization": "User authorized exclusion and direct deletion of corrupt videos."
+    },
+    {
+      "action": "deleted",
+      "category": "byte-identical_validation_duplicate",
+      "count": 7,
+      "files": [
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\eating\\sorted-0624__CAM1_20260609_eat_001_clip-1.mp4",
+          "sha256": "cd47a43b177dd254042ed3fdea9d74f7aad9e164fbc729711dcb0ca528ce7e7d",
+          "bytes": 572298,
+          "matched_train_copy_sha256": "cd47a43b177dd254042ed3fdea9d74f7aad9e164fbc729711dcb0ca528ce7e7d"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\eating\\CAM1_20260609_eat_005_clip-1.mp4",
+          "sha256": "d157649b532fb37865f18fd402ef24d299edd8a2465ba39cd97ce389db9f1c35",
+          "bytes": 425839,
+          "matched_train_copy_sha256": "d157649b532fb37865f18fd402ef24d299edd8a2465ba39cd97ce389db9f1c35"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260604_171914_6b7bea33-a171-46bd-bad1-6865632f8a37_clip-1.mp4",
+          "sha256": "de479eaf8f3193e41d9af4f7e232398f9fef3fd3e14ccd1fcf26ebef0a6bea87",
+          "bytes": 1374458,
+          "matched_train_copy_sha256": "de479eaf8f3193e41d9af4f7e232398f9fef3fd3e14ccd1fcf26ebef0a6bea87"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260604_173527_2b579e36-6e31-4a85-92bd-5cb72a1d2fd4_clip-1.mp4",
+          "sha256": "e8d9130d849c2cba352bad910736c2117e209f50ecbb6b2fa5e45976358b3e34",
+          "bytes": 616526,
+          "matched_train_copy_sha256": "e8d9130d849c2cba352bad910736c2117e209f50ecbb6b2fa5e45976358b3e34"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260609_rest_002_clip-1.mp4",
+          "sha256": "cb753cae8d0d4ce79726740236514f3bdf26c3d99ca8ce29edb73b555a395054",
+          "bytes": 2006191,
+          "matched_train_copy_sha256": "cb753cae8d0d4ce79726740236514f3bdf26c3d99ca8ce29edb73b555a395054"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM1_20260609_rest_023-00.00.02.565-00.00.33.506_clip-1.mp4",
+          "sha256": "e5b4743df545a9b7a51d31397ce2451d2ddb6135ef877d2316c4f4b459836d60",
+          "bytes": 3067990,
+          "matched_train_copy_sha256": "e5b4743df545a9b7a51d31397ce2451d2ddb6135ef877d2316c4f4b459836d60"
+        },
+        {
+          "path": "E:\\ActionRecognition\\behavionRecognition-src\\dataset\\rabbit\\2026-10-22\\val\\resting\\CAM3_20260604_171914_e4ffc586-915b-4532-9a56-d9d0ba8b8651_clip-1.mp4",
+          "sha256": "e58c2c6727ed4d459a21b172713d55cba2c736111d441d27e847183631917c37",
+          "bytes": 1532140,
+          "matched_train_copy_sha256": "e58c2c6727ed4d459a21b172713d55cba2c736111d441d27e847183631917c37"
+        }
+      ],
+      "authorization": "User instructed to delete duplicate samples from val; train copies retained."
+    }
+  ],
+  "final_audit": "E:\\ActionRecognition\\behavionRecognition-src\\experiments\\rabbit_streaming_memory\\manifests\\audit_final_2026-10-24.json",
+  "final_audit_sha256": "2bb69caef7ddc95cc93f8cafdaf29e09ad3a7d356d6d0058ad40696b6c34d427",
+  "final_audit_passed": true,
+  "final_invalid_count": 0,
+  "final_cross_split_duplicate_groups": 0
+}
