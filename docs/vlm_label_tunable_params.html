@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VLM 標註可調參數清單 — 影響說明</title>
+<style>
+  :root {
+    --ink: #1f2430;
+    --muted: #5c6470;
+    --line: #e3e6ec;
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1fe;
+    --hi: #d64541;
+    --hi-soft: #fdecea;
+    --mid: #b7791f;
+    --mid-soft: #fdf3e3;
+    --low: #2f855a;
+    --low-soft: #e6f4ec;
+    --warn-soft: #fff8e1;
+    --warn-line: #f0d47a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 72px; }
+  header.hero {
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+  }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .5px; }
+  .hero .sub { color: var(--muted); font-size: 14px; }
+  .hero .meta { margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .hero .meta code {
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 6px; border-radius: 4px; font-size: 12.5px;
+  }
+  h2 {
+    font-size: 19px; margin: 40px 0 6px;
+    padding-left: 12px; border-left: 4px solid var(--accent);
+  }
+  h2 .en { color: var(--muted); font-weight: normal; font-size: 13px; margin-left: 8px; }
+  .section-desc { color: var(--muted); font-size: 13.5px; margin: 0 0 14px; padding-left: 16px; }
+  table {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    font-size: 13.5px;
+  }
+  th, td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+  th { background: #eef1f6; font-weight: 600; font-size: 13px; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td code, p code, li code {
+    font-family: Consolas, "Courier New", monospace;
+    background: #eef1f6; color: #b03a5b;
+    padding: 1px 5px; border-radius: 4px; font-size: 12.5px;
+  }
+  .param { font-weight: 600; white-space: nowrap; }
+  .badge {
+    display: inline-block; padding: 1px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .b-hi  { background: var(--hi-soft);  color: var(--hi); }
+  .b-mid { background: var(--mid-soft); color: var(--mid); }
+  .b-low { background: var(--low-soft); color: var(--low); }
+  .where {
+    display: inline-block; font-size: 12px; color: var(--muted);
+    background: #f0f2f6; border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 7px; white-space: nowrap;
+  }
+  .callout {
+    background: var(--warn-soft); border: 1px solid var(--warn-line);
+    border-radius: 10px; padding: 14px 18px; margin: 20px 0 8px; font-size: 14px;
+  }
+  .callout strong { color: #8a6d1a; }
+  .steps { counter-reset: step; padding: 0; margin: 16px 0 0; list-style: none; }
+  .steps li {
+    counter-increment: step; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px 14px 58px; margin-bottom: 10px; position: relative;
+  }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 16px; top: 14px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .steps .t { font-weight: 700; }
+  .steps .d { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+  .notes li { margin-bottom: 8px; }
+  footer {
+    margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12.5px;
+  }
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 0; max-width: none; }
+    table { break-inside: auto; }
+    tr { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>VLM 標註可調參數清單</h1>
+  <div class="sub">除修改 Prompt 與更換模型（Qwen3-VL 8B / 32B）之外，可影響或優化標註效果的全部參數，依影響層級分類。</div>
+  <div class="meta">
+    鏈路：<code>watchdog.bat</code> → <code>scripts/vlm_label/run_overnight.py</code> → <code>scripts/vlm_label/vlm_label.py</code>
+    　·　整理日期：2026-10-09
+  </div>
+</header>
+
+<div class="callout">
+  <strong>⚠ 前置注意：</strong><code>run_overnight.py</code> 的 <code>run_label()</code> 目前<strong>只透傳</strong>
+  <code>--limit / --prompt / --yolo-* / --min-duration</code> 等少數參數；
+  <code>--window-sec / --stride-sec / --frames / --max-side / --max-new-tokens</code>
+  <strong>並未透傳</strong>。若要透過整夜編排調整這些參數，需先在 <code>run_label()</code> 補加對應參數，或直接呼叫 <code>vlm_label.py</code>。
+</div>
+
+<h2>一、輸入側參數<span class="en">Input — 決定模型「看到什麼」，影響最大</span></h2>
+<p class="section-desc">這一層直接改變送進模型的視覺證據，是細粒度行為（eating / drinking 嘴部動作）判別的第一槓桿。</p>
+<table>
+  <thead>
+    <tr>
+      <th>參數</th><th>預設值</th><th>影響說明</th><th>建議調法</th><th>影響等級</th><th>修改位置</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="param"><code>--yolo-crop</code><br><code>--yolo-expand</code><br><code>--yolo-conf</code></td>
+      <td>關閉 / 2.0 / 0.3</td>
+      <td>先以 YOLO 裁出兔子區域再推理，去除干擾源（另一隻兔、籠子、雜物）；expand 越小越聚焦動物本體、越大越保留場景上下文；conf 過低可能裁到誤檢框。未檢出時回退全幀。</td>
+      <td>crop 對照輪已在跑；expand 可試 <b>1.5</b>（更聚焦嘴部動作）vs <b>2.5</b>（更多上下文）。</td>
+      <td><span class="badge b-hi">高</span></td>
+      <td><span class="where">CLI（已透傳）</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>--max-side</code></td>
+      <td>448</td>
+      <td>長邊解析度上限。eating / drinking 的嘴部接觸證據非常小，448 px 可能不足以分辨；提高解析度可改善細粒度判別，代價是 visual token 增多、推論變慢、顯存佔用上升。</td>
+      <td>提到 <b>640～768</b>；先跑少量 clip 驗證 32B 的耗時與顯存。</td>
+      <td><span class="badge b-hi">高</span></td>
+      <td><span class="where">CLI（未透傳）</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>--frames</code></td>
+      <td>8</td>
+      <td>單一窗口內的取樣幀數。更多幀 = 更密的時間證據，有助捕捉短暫動作；同時自動改變 Prompt 內的多數派閾值（n//2+1）。</td>
+      <td><b>8 → 12 或 16</b>；幀越多越慢。</td>
+      <td><span class="badge b-hi">高</span></td>
+      <td><span class="where">CLI（未透傳）</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>--window-sec</code><br><code>--stride-sec</code></td>
+      <td>6 / 3</td>
+      <td>窗口幾何。窗口越長，單窗內行為混雜（mixed）風險越高；stride 越小重疊越多，相鄰窗口形成投票效果，時間線更平滑、片段更連貫。</td>
+      <td>試 <b>4s / 2s</b>（更細）或 <b>8s / 4s</b>（更穩）；stride 減半會使窗口數與耗時翻倍。</td>
+      <td><span class="badge b-mid">中高</span></td>
+      <td><span class="where">CLI（未透傳）</span></td>
+    </tr>
+    <tr>
+      <td class="param">TARGET / SCENE 佔位符</td>
+      <td>固定預設值</td>
+      <td><code>build_window_prompt()</code> 支援注入場景描述，但主鏈路目前傳入 <code>"none"</code>。告知「水碗在左、草架在右」等真實場景資訊，可直接緩解 eating / drinking / grooming 的混淆。</td>
+      <td>程式碼級改動：在 <code>make_prompt</code> 傳入 scene 描述。</td>
+      <td><span class="badge b-mid">中高</span></td>
+      <td><span class="where">vlm_label.py</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>--min-duration</code></td>
+      <td>0（crop 輪 0.5s）</td>
+      <td>過濾過短影片，避免單幀退化窗口產生噪音標籤。</td>
+      <td>依素材狀況按需設定。</td>
+      <td><span class="badge b-low">低</span></td>
+      <td><span class="where">CLI（已透傳）</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>二、解碼 / 推理側參數<span class="en">Decoding — 決定「怎麼生成答案」</span></h2>
+<p class="section-desc">此層不改變模型看到的內容，但影響生成行為與對照實驗的公平性。</p>
+<table>
+  <thead>
+    <tr>
+      <th>參數 / 配置</th><th>現狀</th><th>影響說明</th><th>建議調法</th><th>影響等級</th><th>修改位置</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="param">取樣策略</td>
+      <td><code>do_sample=False</code>（貪心）</td>
+      <td>分類任務貪心解碼即為正確選擇，結果可復現；beam search 收益微小且顯著變慢。</td>
+      <td>不建議改動。</td>
+      <td><span class="badge b-low">低</span></td>
+      <td><span class="where">vlm_label.py</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>--dtype</code></td>
+      <td>8B = bf16<br>32B = bnb4 (NF4)</td>
+      <td><b>混淆變數</b>：目前 8B 與 32B 的效果差距中混雜著量化損失，並非純粹的模型能力差異。</td>
+      <td>加一輪 <b>8B bnb4</b> 對照，分離量化帶來的損失。</td>
+      <td><span class="badge b-mid">中</span></td>
+      <td><span class="where">CLI（已透傳）</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>--max-new-tokens</code></td>
+      <td>512</td>
+      <td>僅防截斷與卡死，正常情況不影響標註品質；compact 模式每窗僅約 15 token，用不到 512。</td>
+      <td>維持即可；compact 模式可降低以加速失敗重試。</td>
+      <td><span class="badge b-low">低</span></td>
+      <td><span class="where">CLI（未透傳）</span></td>
+    </tr>
+    <tr>
+      <td class="param">Processor 動態解析度<br><code>min_pixels / max_pixels</code></td>
+      <td>未設定</td>
+      <td>Qwen3-VL 的 AutoProcessor 原生支援動態解析度控制，是 <code>--max-side</code> 之外的另一條解析度調節路徑，可精確控制 visual token 預算。</td>
+      <td>程式碼級：載入 processor 時傳入參數。</td>
+      <td><span class="badge b-mid">中</span></td>
+      <td><span class="where">vlm_label.py</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>三、後處理側參數<span class="en">Post-processing — 不動模型，改「結果如何合成」</span></h2>
+<p class="section-desc">模型輸出之後的合成邏輯，直接決定最終時間線的形態與 Unknown 率，且零推論成本。</p>
+<table>
+  <thead>
+    <tr>
+      <th>位置</th><th>現狀</th><th>影響說明</th><th>可做的改動</th><th>影響等級</th><th>修改位置</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="param">多數派規則</td>
+      <td>程式碼常量<br><code>n//2+1</code>（8 幀需 5 幀）</td>
+      <td>支持幀數不足即回 Unknown，是 <b>Unknown 率的直接閥門</b>：收緊 → 更多棄權、更高精度；放寬為簡單多數 → 更多具體標籤、更高召回。</td>
+      <td>先統計現有 Unknown 率，再決定放寬或收緊一檔做對照。</td>
+      <td><span class="badge b-hi">高</span></td>
+      <td><span class="where">vlm_label.py 常量</span></td>
+    </tr>
+    <tr>
+      <td class="param"><code>merge_windows()</code></td>
+      <td>僅相鄰同標籤合併<br>+ 置信度加權</td>
+      <td>目前的時間線合成較粗糙，單一低置信窗口即可割裂片段。</td>
+      <td>可加：低置信度窗口降級為 Unknown、最短片段過濾（如 &lt;2s 併入鄰段）、跨窗中值濾波平滑時間線。</td>
+      <td><span class="badge b-mid">中高</span></td>
+      <td><span class="where">vlm_label.py</span></td>
+    </tr>
+    <tr>
+      <td class="param">置信度閾值分流</td>
+      <td>無，全量落盤</td>
+      <td>首 token softmax 機率已存於 <code>probs</code>，但未參與任何決策。</td>
+      <td>按閾值分流進人工複核隊列（低置信 → 必看）。</td>
+      <td><span class="badge b-mid">中</span></td>
+      <td><span class="where">後處理腳本</span></td>
+    </tr>
+    <tr>
+      <td class="param">8B + 32B 雙模型集成</td>
+      <td>兩份結果獨立展示</td>
+      <td>審閱頁已可並排對比，但無自動規則利用雙模型一致性。</td>
+      <td>後處理加「雙模型一致才通過，不一致進複核」的自動規則。</td>
+      <td><span class="badge b-mid">中</span></td>
+      <td><span class="where">後處理腳本</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>四、建議試驗順序<span class="en">最划算的前四項</span></h2>
+<ol class="steps">
+  <li>
+    <div class="t"><code>--max-side</code> 448 → 640</div>
+    <div class="d">細粒度動作識別最可能缺的就是解析度；若 32B 耗時可接受，這是首選試驗。</div>
+  </li>
+  <li>
+    <div class="t"><code>--frames</code> 8 → 12</div>
+    <div class="d">同一窗口內更多時間證據，有助捕捉短暫動作、穩定多數派判定。</div>
+  </li>
+  <li>
+    <div class="t">多數派規則放寬一檔對照</div>
+    <div class="d">先看當前 Unknown 率有多高再決定；Unknown 過多會大幅增加複核負擔。</div>
+  </li>
+  <li>
+    <div class="t">YOLO <code>--yolo-expand</code> 1.5 vs 2.5</div>
+    <div class="d">確定 crop 的最佳視野：聚焦嘴部動作 vs 保留場景上下文的取捨。</div>
+  </li>
+</ol>
+
+<h2>五、執行注意事項</h2>
+<ul class="notes">
+  <li><b>換 tag、新目錄：</b>每次對照實驗沿用現有慣例，改用新 tag（如 <code>qwen3vl-8b-v5</code>）寫入新文檔目錄，舊結果保持不動，審閱頁可直接加面板對比。</li>
+  <li><b>顯存預算：</b><code>max-side</code> / <code>frames</code> 調大後 visual token 增多，32B NF4 的顯存餘量會被進一步擠壓（桌面 GUI 常駐約 2～5 GB）；改完先跑 5 條 clip 驗證耗時與是否 OOM，再放開跑全量。</li>
+  <li><b>32B 不得設記憶體上限：</b>bnb 4bit 拒絕 CPU 分派，帶 <code>--gpu-mem-gib</code> 上限會載入失敗，維持不設上限的全 GPU 放置（約 18 GB）。</li>
+  <li><b>未透傳參數：</b>調整 <code>window-sec / stride-sec / frames / max-side / max-new-tokens</code> 前，需先在 <code>run_overnight.run_label()</code> 補加透傳，否則改動不生效。</li>
+</ul>
+
+<footer>
+  依據 2026-10-09 代碼現狀整理：scripts/vlm_label/vlm_label.py · scripts/vlm_label/run_overnight.py · scripts/vlm_label/watchdog.bat。
+  僅供 VLM 標註實驗調參參考，不涉及與 dashboard / repvit 標註的一致率對比。
+</footer>
+
+</div>
+</body>
+</html>

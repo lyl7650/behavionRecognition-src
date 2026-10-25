@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Qwen3-VL 标注对比：8B vs 32B</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1e1f22; color:#d7d8da; font:13px/1.6 "Segoe UI",sans-serif; display:flex; height:100vh; }
+  .side { width:230px; background:#26272b; border-right:1px solid #333; overflow-y:auto; flex-shrink:0; }
+  .side h3 { font-size:13px; font-weight:500; padding:10px 12px 6px; color:#9aa0a6; }
+  .vitem { padding:7px 12px; cursor:pointer; border-left:2px solid transparent; }
+  .vitem:hover { background:#2e2f34; }
+  .vitem.on { background:#33363c; border-left-color:#4f8cff; }
+  .vitem .rid { font-weight:500; }
+  .vitem .ag { font-size:11px; color:#9aa0a6; }
+  .main { flex:1; padding:14px 18px; overflow-y:auto; }
+  .head { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .head h2 { font-size:15px; font-weight:500; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:#2e2f34; color:#9aa0a6; }
+  .chip { font-size:11px; padding:2px 8px; border-radius:10px; }
+  .chip.ok { background:#1d3a22; color:#8fd6a4; }
+  .chip.partial { background:#3a2f14; color:#e8c268; }
+  .chip.run { background:#16283a; color:#7fb5e8; }
+  .chip.none { background:#2e2f34; color:#9aa0a6; }
+  button { background:#2e2f34; color:#d7d8da; border:1px solid #444; border-radius:6px; font-size:11px; padding:3px 10px; cursor:pointer; }
+  video { width:100%; max-width:860px; background:#000; border-radius:8px; }
+  .tl-label { font-size:10px; color:#9aa0a6; margin:3px 0 2px; line-height:1.3; }
+  .tl { position:relative; height:12px; background:#26272b; border-radius:4px; overflow:hidden; max-width:860px; }
+  .tl .seg { position:absolute; top:0; height:100%; opacity:.92; }
+  .tl.hoverline { position:absolute; top:0; width:2px; background:#fff; opacity:.55; height:100%; display:none; pointer-events:none; }
+  .probbox { max-width:860px; margin-top:8px; background:#26272b; border-radius:8px; padding:8px 12px; }
+  .probbox h4 { font-size:12px; font-weight:500; color:#9aa0a6; margin-bottom:6px; }
+  .pgroup { margin-bottom:8px; }
+  .pgroup .pt { font-size:11px; color:#c4c7cb; font-weight:500; margin-bottom:2px; }
+  .prow { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .prow .nm { width:70px; font-size:11px; color:#c4c7cb; }
+  .prow .bar { flex:1; height:12px; background:#1e1f22; border-radius:4px; overflow:hidden; }
+  .prow .fill { height:100%; }
+  .prow .v { width:52px; text-align:right; font-size:11px; color:#9aa0a6; }
+  .legend { display:flex; gap:12px; margin:4px 0 1px; font-size:11px; color:#9aa0a6; flex-wrap:wrap; }
+  .legend span i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; }
+  .tab { font-size:12px; padding:5px 16px; border-radius:6px; background:#26272b; color:#9aa0a6; border:1px solid #333; cursor:pointer; }
+  .tab.on { background:#33363c; color:#d7d8da; border-color:#4f8cff; }
+  input[type=text], input[type=number], select { background:#1e1f22; color:#d7d8da; border:1px solid #444; border-radius:6px; padding:5px 8px; font-size:12px; }
+  textarea { width:100%; max-width:860px; background:#1e1f22; color:#d7d8da; border:1px solid #444; border-radius:6px; padding:7px 9px; font:12px/1.55 Consolas,monospace; resize:vertical; }
+  .pgrow { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; max-width:860px; }
+  .pgrow label { font-size:11px; color:#9aa0a6; white-space:nowrap; }
+  button.primary { background:#1d3a63; border-color:#2f5b9e; color:#cfe3ff; padding:6px 18px; font-size:12px; }
+  button:disabled { opacity:.45; cursor:default; }
+  .statusline { font-size:11px; color:#9aa0a6; }
+  .pgbox { max-width:860px; background:#26272b; border-radius:8px; padding:10px 14px; margin-top:12px; }
+  .pgbox h4 { font-size:12px; font-weight:500; color:#9aa0a6; margin-bottom:6px; }
+  .winrow { display:flex; gap:10px; font-size:11px; padding:2px 0; color:#c4c7cb; align-items:baseline; }
+  .winrow .t { width:110px; color:#9aa0a6; flex-shrink:0; }
+  .wdetail { margin:4px 0 2px; padding:5px 8px; background:#1e1f22; border-radius:6px; font-size:11px; color:#9aa0a6; }
+  .fstrip { display:flex; gap:2px; margin-bottom:3px; flex-wrap:wrap; }
+  .fcell { display:inline-block; min-width:16px; text-align:center; font-size:9px; line-height:14px; color:#111; border-radius:3px; padding:0 2px; }
+  .wdetail .ev { color:#c4c7cb; margin-top:2px; }
+  .rflag { color:#e8c268; margin-right:8px; }
+  .rdim { color:#777c82; margin-right:8px; }
+  .hint { font-size:11px; color:#777c82; max-width:860px; margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="side" id="side"><h3>视频（点选）</h3><div id="vlist"></div></div>
+<div class="main">
+  <div class="tabs">
+    <button class="tab on" id="tab_cmp" onclick="showTab('cmp')">批量对比</button>
+    <button class="tab" id="tab_crop" onclick="showTab('crop')">裁剪对比</button>
+    <button class="tab" id="tab_old" onclick="showTab('old')">旧prompt对比</button>
+    <button class="tab" id="tab_v4" onclick="showTab('v4')">prompt v3·精简</button>
+    <button class="tab" id="tab_pg" onclick="showTab('pg')">即席测试</button>
+    <button class="tab" id="tab_pe" onclick="showTab('pe')">Prompt 实验</button>
+  </div>
+  <div id="cmp">
+  <div class="head">
+    <h2 id="vname">—</h2>
+    <span class="badge" id="cnt">—</span>
+    <span class="chip none" id="st_a">8B —</span>
+    <span class="chip none" id="st_b">32B —</span>
+    <span class="chip none" id="st_c">AP —</span>
+    <span id="st_extra" style="display:contents"></span>
+    <button id="refresh" style="display:none">刷新</button>
+  </div>
+  <video id="player" controls preload="metadata"></video>
+  <div class="legend">
+    <span><i style="background:#7f77dd"></i>resting 休息</span>
+    <span><i style="background:#639922"></i>active 活动</span>
+    <span><i style="background:#ba7517"></i>eating 吃草</span>
+    <span><i style="background:#1d9e75"></i>drinking 喝水</span>
+    <span><i style="background:#c95fa8"></i>grooming 理毛</span>
+    <span><i style="background:#a5814a"></i>digging 刨地</span>
+    <span><i style="background:#4a8fd1"></i>bellyup 仰躺</span>
+    <span><i style="background:#8a8f96"></i>none 无兔子</span>
+    <span><i style="background:#d1d5db"></i>unknown 不确定</span>
+    <span><i style="background:#3f4247"></i>AP 间隙(不确定/边界)</span>
+  </div>
+  <div class="tl-label">Qwen3-VL-8B 新prompt.九类（BF16）</div>
+  <div class="tl" id="tl_a"><div class="hoverline"></div></div>
+  <div class="tl-label">Qwen3-VL-32B 新prompt.九类（NF4 4bit，全 GPU）</div>
+  <div class="tl" id="tl_b"><div class="hoverline"></div></div>
+  <div class="tl-label">repvit+GRU 前 50（10-06 scene-retrain，conf≥0.5）</div>
+  <div class="tl" id="tl_c"><div class="hoverline"></div></div>
+  <div class="pgrow" style="margin-top:10px">
+    <label>选择对比（勾选才加载，不默认同屏）：</label>
+    <span class="statusline" id="cmp_tags">加载中…</span>
+    <button onclick="loadTags()">刷新列表</button>
+  </div>
+  <div id="extra_tls"></div>
+  <div class="probbox">
+    <h4 id="ptitle">点击时间轴任意时刻查看两模型的九类概率与窗口明细</h4>
+    <div id="probs"></div>
+  </div>
+  </div>
+  <div id="crop" style="display:none">
+    <div class="head">
+      <h2 id="crop_vname">—</h2>
+      <span class="badge" id="crop_cnt">—</span>
+      <span class="chip none" id="st_ca">裁8B —</span>
+      <span class="chip none" id="st_cb">裁32B —</span>
+    </div>
+    <video id="crop_player" controls preload="metadata"></video>
+    <div class="legend">
+      <span><i style="background:#7f77dd"></i>resting 休息</span>
+      <span><i style="background:#639922"></i>active 活动</span>
+      <span><i style="background:#ba7517"></i>eating 吃草</span>
+      <span><i style="background:#1d9e75"></i>drinking 喝水</span>
+      <span><i style="background:#c95fa8"></i>grooming 理毛</span>
+      <span><i style="background:#a5814a"></i>digging 刨地</span>
+      <span><i style="background:#4a8fd1"></i>bellyup 仰躺</span>
+      <span><i style="background:#8a8f96"></i>none 无兔子</span>
+      <span><i style="background:#d1d5db"></i>unknown 不确定</span>
+    </div>
+    <div class="tl-label">全画面 Qwen3-VL-8B 新prompt.九类（BF16）</div>
+    <div class="tl" id="cr_a"><div class="hoverline"></div></div>
+    <div class="tl-label">全画面 Qwen3-VL-32B 新prompt.九类（NF4）</div>
+    <div class="tl" id="cr_b"><div class="hoverline"></div></div>
+    <div class="tl-label">YOLO 裁剪 Qwen3-VL-8B 新prompt.九类（expand 2，检测不到用全画面）</div>
+    <div class="tl" id="cr_c"><div class="hoverline"></div></div>
+    <div class="tl-label">YOLO 裁剪 Qwen3-VL-32B 新prompt.九类（expand 2）</div>
+    <div class="tl" id="cr_d"><div class="hoverline"></div></div>
+    <div class="probbox">
+      <h4 id="crop_ptitle">点击时间轴任意时刻对比裁剪 vs 全画面的九类概率与窗口明细</h4>
+      <div id="crop_probs"></div>
+    </div>
+  </div>
+  <div id="old" style="display:none">
+    <div class="head">
+      <h2 id="old_vname">—</h2>
+      <span class="badge" id="old_cnt">—</span>
+      <span class="chip none" id="st_oa">旧8B —</span>
+      <span class="chip none" id="st_ob">旧32B —</span>
+    </div>
+    <video id="old_player" controls preload="metadata"></video>
+    <div class="legend">
+      <span><i style="background:#7f77dd"></i>resting 休息</span>
+      <span><i style="background:#639922"></i>active 活动</span>
+      <span><i style="background:#ba7517"></i>eating 吃草</span>
+      <span><i style="background:#1d9e75"></i>drinking 喝水</span>
+      <span><i style="background:#8a8f96"></i>none 无兔子</span>
+      <span><i style="background:#3f4247"></i>AP 间隙(不确定/边界)</span>
+    </div>
+    <div class="tl-label">旧prompt（五类）Qwen3-VL-8B（BF16）</div>
+    <div class="tl" id="old_a"><div class="hoverline"></div></div>
+    <div class="tl-label">旧prompt（五类）Qwen3-VL-32B（NF4）</div>
+    <div class="tl" id="old_b"><div class="hoverline"></div></div>
+    <div class="probbox">
+      <h4 id="old_ptitle">点击时间轴查看旧 prompt 的五类概率</h4>
+      <div id="old_probs"></div>
+    </div>
+  </div>
+  <div id="v4" style="display:none">
+    <div class="head">
+      <h2 id="v4_vname">—</h2>
+      <span class="badge" id="v4_cnt">—</span>
+      <span class="chip none" id="st_va">精简8B —</span>
+      <span class="chip none" id="st_vb">精简32B —</span>
+    </div>
+    <video id="v4_player" controls preload="metadata"></video>
+    <div class="legend">
+      <span><i style="background:#7f77dd"></i>resting 休息</span>
+      <span><i style="background:#639922"></i>active 活动</span>
+      <span><i style="background:#ba7517"></i>eating 吃草</span>
+      <span><i style="background:#1d9e75"></i>drinking 喝水</span>
+      <span><i style="background:#c95fa8"></i>grooming 理毛</span>
+      <span><i style="background:#a5814a"></i>digging 刨地</span>
+      <span><i style="background:#4a8fd1"></i>bellyup 仰躺</span>
+      <span><i style="background:#8a8f96"></i>none 无兔子</span>
+      <span><i style="background:#d1d5db"></i>unknown 不确定</span>
+    </div>
+    <div class="tl-label">prompt v3·精简（九类短答）Qwen3-VL-8B（BF16）</div>
+    <div class="tl" id="v4_a"><div class="hoverline"></div></div>
+    <div class="tl-label">prompt v3·精简（九类短答）Qwen3-VL-32B（NF4）</div>
+    <div class="tl" id="v4_b"><div class="hoverline"></div></div>
+    <div class="probbox">
+      <h4 id="v4_ptitle">点击时间轴查看精简 prompt 的九类概率</h4>
+      <div id="v4_probs"></div>
+    </div>
+  </div>
+  <div id="pg" style="display:none">
+    <div class="head">
+      <h2>即席测试</h2>
+      <span class="statusline" id="pg_status">状态加载中…</span>
+    </div>
+    <div class="pgrow">
+      <input type="text" id="pg_path" style="flex:1;min-width:320px"
+             placeholder="输入视频绝对路径，如 G:\aws_backup\2026-10-07\raw\rabbit\xxx.mp4">
+      <button onclick="pgLoadVideo()">加载预览</button>
+      <button onclick="pgUseCurrent()">带入对比页当前视频</button>
+    </div>
+    <video id="pg_player" controls preload="metadata"></video>
+    <div class="pgrow">
+      <label>模型</label>
+      <select id="pg_model">
+        <option value="8b">Qwen3-VL-8B（BF16）</option>
+        <option value="32b">Qwen3-VL-32B（NF4 4bit）</option>
+      </select>
+      <label>窗口W(s)</label><input type="number" id="pg_w" value="6" step="0.5" min="1" style="width:64px">
+      <label>步长S(s)</label><input type="number" id="pg_s" value="3" step="0.5" min="0.5" style="width:64px">
+      <label>帧数F</label><input type="number" id="pg_f" value="8" step="1" min="1" max="16" style="width:56px">
+      <label>窗口上限</label><input type="number" id="pg_maxwin" value="120" step="10" min="0" style="width:70px">
+      <label><input type="checkbox" id="pg_free"> 自由问答</label>
+    </div>
+    <div class="pgrow"><textarea id="pg_prompt" rows="9" spellcheck="false"></textarea></div>
+    <div class="pgrow">
+      <button class="primary" id="pg_run" onclick="pgRun()">▶ 运行推理</button>
+      <button onclick="pgResetPrompt()">恢复默认 prompt</button>
+      <span class="statusline" id="pg_msg"></span>
+    </div>
+    <div class="hint">标签模式：模型回答需以 Resting|Active|Eating|Drinking|None 开头才会解析标签与置信度（可自由改写定义与示例，但请保留该格式行）。改问其他问题请勾选「自由问答」。结果只在页面上，不落盘。</div>
+    <div id="pg_result"></div>
+  </div>
+  <div id="pe" style="display:none">
+    <div class="head">
+      <h2>Prompt 实验 · 批量重跑</h2>
+      <span class="statusline" id="pe_status">状态加载中…</span>
+    </div>
+    <div class="pgrow">
+      <label>模型</label>
+      <select id="pe_model">
+        <option value="8b">Qwen3-VL-8B（BF16）</option>
+        <option value="32b">Qwen3-VL-32B（NF4 4bit）</option>
+      </select>
+      <label>输出模式</label>
+      <select id="pe_mode">
+        <option value="full">full（JSON 逐窗细节，慢）</option>
+        <option value="compact">compact（一行短答，快 ~20 倍）</option>
+      </select>
+      <label>条数</label><input type="number" id="pe_limit" value="50" min="1" max="500" step="10" style="width:64px">
+      <label>窗口W(s)</label><input type="number" id="pe_w" value="6" step="0.5" min="1" style="width:60px">
+      <label>步长S(s)</label><input type="number" id="pe_s" value="3" step="0.5" min="0.5" style="width:60px">
+      <label>帧数F</label><input type="number" id="pe_f" value="8" step="1" min="1" max="16" style="width:52px">
+      <label>tag</label><input type="text" id="pe_tag" placeholder="留空自动 pexp-月日-时分" style="width:190px">
+    </div>
+    <div class="pgrow">
+      <label>载入历史 prompt</label>
+      <select id="pe_hist" style="min-width:240px"><option value="">— 选择存档 —</option></select>
+      <button onclick="peLoadArchive()">载入</button>
+      <button onclick="peResetPrompt()">恢复内置 prompt</button>
+    </div>
+    <div class="pgrow"><textarea id="pe_prompt" rows="16" spellcheck="false"></textarea></div>
+    <div class="pgrow">
+      <button class="primary" id="pe_run" onclick="peRun()">▶ 批量跑</button>
+      <span class="statusline" id="pe_msg"></span>
+    </div>
+    <div id="pe_progress" class="pgbox" style="display:none">
+      <h4 id="pe_ptitle">任务进度</h4>
+      <div class="tl" id="pe_bar" style="height:14px;max-width:860px"><div class="seg" id="pe_fill" style="left:0;width:0%;background:#1d9e75"></div></div>
+      <div class="statusline" id="pe_pline" style="margin-top:5px"></div>
+    </div>
+    <div class="hint">改 prompt（如 Resting 的描述）后点「批量跑」：后台子进程按 watchdog 同一链路重跑前 N 条，逐条落盘（中途崩溃/关页不丢进度），结果写入新 tag 目录——已有结果永不覆盖。跑完后到「批量对比」页用「选择对比」勾选新 tag 查看时间轴。置信度仍取固定 9 个 label 词的 first-token softmax，因此只改描述与规则文字，不要改 9 个 label 词本身。</div>
+  </div>
+</div>
+<script>
+const COLORS = { resting:"#7f77dd", active:"#639922", eating:"#ba7517", drinking:"#1d9e75", grooming:"#c95fa8", digging:"#a5814a", bellyup:"#4a8fd1", none:"#8a8f96", unknown:"#d1d5db", notvisible:"#55595f", gap:"#3f4247" };
+const FILE_BASE = window.FILE_BASE || "";
+let DATA = null, CUR = null, CUR_IDX = 0;
+let EXTRA_TAGS = [];   // comparison tags the user checked (loaded on demand)
+let TAG_POOL = [];     // available .vlm-<tag> dirs from /api/tags
+let PE_STATUS = null, PE_POLL = null, PE_DEFAULT = null;
+
+function segsToSpans(segs, gaps, dur){
+  const out = [];
+  for(const s of segs || []) out.push({s:s.start, e:s.end, l:s.label});
+  for(const g of gaps || []) out.push({s:g[0], e:g[1], l:"gap"});
+  out.sort((a,b)=>a.s-b.s);
+  const cov = new Array(Math.max(1, Math.ceil(dur*10))).fill(null);
+  for(const o of out) for(let i=Math.floor(o.s*10); i<Math.min(cov.length, Math.ceil(o.e*10)); i++) if(cov[i]===null) cov[i]=o.l;
+  const spans = []; let cur = null;
+  cov.forEach((l,i)=>{ const t=i/10;
+    if(cur && cur.l===l) cur.e=t+0.1; else { cur={s:t,e:t+0.1,l}; spans.push(cur); } });
+  return spans.filter(sp=>sp.l);
+}
+function drawTimeline(el, spans, dur){
+  el.querySelectorAll(".seg").forEach(n=>n.remove());
+  for(const sp of spans){
+    const d=document.createElement("div");
+    d.className="seg"; d.style.left=(sp.s/dur*100)+"%"; d.style.width=((sp.e-sp.s)/dur*100)+"%";
+    d.style.background=COLORS[sp.l]||"#555";
+    el.appendChild(d);
+  }
+}
+function probsRows(wins, tag){
+  if(!wins || !wins.length) return `<div class="pgroup"><div class="pt">${tag}：无窗口覆盖</div></div>`;
+  const w = wins[wins.length-1];
+  const head = `${tag}（窗口 ${w.start.toFixed(1)}-${w.end.toFixed(1)}s）`;
+  const entries = Object.entries(w.probs || {}).sort((a,b)=>b[1]-a[1]);
+  const rows = entries.length
+    ? entries.map(([k,v])=>`<div class="prow"><div class="nm">${k}</div>
+      <div class="bar"><div class="fill" style="width:${(v*100).toFixed(1)}%;background:${COLORS[k]||"#555"}"></div></div>
+      <div class="v">${(v*100).toFixed(1)}%</div></div>`).join("")
+    : `<div class="prow"><div class="nm" style="width:auto">${w.parse_error ? "解析失败" : "无概率数据"}</div></div>`;
+  return `<div class="pgroup"><div class="pt">${head}</div>${rows}</div>`;
+}
+function showProbs(t){
+  if(!CUR || !DATA) return;
+  const wa = (CUR.a_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const wb = (CUR.b_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  let html = probsRows(wa,"8B BF16") + probsRows(wb,"32B NF4");
+  (DATA.extra_tags||[]).forEach(tag=>{
+    const w = (CUR["x_"+tag+"_windows"]||[]).filter(x=>t>=x.start-0.001 && t<x.end+0.001);
+    html += probsRows(w, tag);
+  });
+  document.getElementById("probs").innerHTML = html;
+  document.getElementById("ptitle").textContent = `t=${t.toFixed(1)}s 窗口概率（${(DATA.extra_tags||[]).length+2} 个面板）`;
+}
+function pick(i){
+  CUR_IDX = i;
+  CUR = DATA.videos[i];
+  document.querySelectorAll(".vitem").forEach((n,j)=>n.classList.toggle("on", j===i));
+  document.getElementById("vname").textContent = CUR.rel;
+  document.getElementById("crop_vname").textContent = CUR.rel;
+  const p = document.getElementById("player");
+  const src = FILE_BASE + "/video/" + CUR.rel;
+  p.src = src;
+  drawTimeline(document.getElementById("tl_a"), segsToSpans(CUR.a_segments, CUR.a_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("tl_b"), segsToSpans(CUR.b_segments, CUR.b_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("tl_c"), segsToSpans(CUR.ap_segments, CUR.ap_gaps, CUR.duration), CUR.duration);
+  ["tl_a","tl_b","tl_c"].forEach(id=>{
+    wireTimeline(document.getElementById(id), CUR.duration, p, t=>showProbs(t));
+  });
+  p.ontimeupdate=()=>{ showProbs(p.currentTime); };
+  showProbs(0);
+  // crop tab (same video, 4 rows: full 8B/32B + cropped 8B/32B)
+  const pc = document.getElementById("crop_player");
+  pc.src = src;
+  drawTimeline(document.getElementById("cr_a"), segsToSpans(CUR.a_segments, CUR.a_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("cr_b"), segsToSpans(CUR.b_segments, CUR.b_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("cr_c"), segsToSpans(CUR.c_segments, CUR.c_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("cr_d"), segsToSpans(CUR.d_segments, CUR.d_gaps, CUR.duration), CUR.duration);
+  ["cr_a","cr_b","cr_c","cr_d"].forEach(id=>{
+    wireTimeline(document.getElementById(id), CUR.duration, pc, t=>showCropProbs(t));
+  });
+  pc.ontimeupdate=()=>{ showCropProbs(pc.currentTime); };
+  showCropProbs(0);
+  // old-prompt tab (v2 five-class docs, o_a_/o_b_ fields)
+  const plo = document.getElementById("old_player");
+  plo.src = src;
+  drawTimeline(document.getElementById("old_a"), segsToSpans(CUR.o_a_segments, CUR.o_a_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("old_b"), segsToSpans(CUR.o_b_segments, CUR.o_b_gaps, CUR.duration), CUR.duration);
+  ["old_a","old_b"].forEach(id=>{
+    wireTimeline(document.getElementById(id), CUR.duration, plo, t=>showOldProbs(t));
+  });
+  plo.ontimeupdate=()=>{ showOldProbs(plo.currentTime); };
+  showOldProbs(0);
+  // compact-prompt tab (schema v4, label+confidence only)
+  const pv = document.getElementById("v4_player");
+  pv.src = src;
+  drawTimeline(document.getElementById("v4_a"), segsToSpans(CUR.v4_a_segments, CUR.v4_a_gaps, CUR.duration), CUR.duration);
+  drawTimeline(document.getElementById("v4_b"), segsToSpans(CUR.v4_b_segments, CUR.v4_b_gaps, CUR.duration), CUR.duration);
+  ["v4_a","v4_b"].forEach(id=>{
+    wireTimeline(document.getElementById(id), CUR.duration, pv, t=>showV4Probs(t));
+  });
+  pv.ontimeupdate=()=>{ showV4Probs(pv.currentTime); };
+  showV4Probs(0);
+  // dynamic comparison panels (checked tags only)
+  (DATA.extra_tags||[]).forEach(tag=>{
+    const el = document.getElementById("tl_x_"+tag);
+    if(!el) return;
+    drawTimeline(el, segsToSpans(CUR["x_"+tag+"_segments"], CUR["x_"+tag+"_gaps"], CUR.duration), CUR.duration);
+    wireTimeline(el, CUR.duration, p, t=>showProbs(t));
+  });
+}
+function showCropProbs(t){
+  if(!CUR) return;
+  const wa = (CUR.a_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const wb = (CUR.b_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const wc = (CUR.c_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const wd = (CUR.d_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  document.getElementById("crop_probs").innerHTML =
+    probsRows(wc,"8B 裁剪") + probsRows(wd,"32B 裁剪") +
+    probsRows(wa,"8B 全画面") + probsRows(wb,"32B 全画面");
+  document.getElementById("crop_ptitle").textContent =
+    `t=${t.toFixed(1)}s 裁剪 vs 全画面窗口概率`;
+}
+function showOldProbs(t){
+  if(!CUR) return;
+  const wa = (CUR.o_a_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const wb = (CUR.o_b_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  document.getElementById("old_probs").innerHTML =
+    probsRows(wa,"旧8B") + probsRows(wb,"旧32B");
+  document.getElementById("old_ptitle").textContent =
+    `t=${t.toFixed(1)}s 旧 prompt 五类窗口概率`;
+}
+function showV4Probs(t){
+  if(!CUR) return;
+  const wa = (CUR.v4_a_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const wb = (CUR.v4_b_windows||[]).filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  document.getElementById("v4_probs").innerHTML =
+    probsRows(wa,"精简8B") + probsRows(wb,"精简32B");
+  document.getElementById("v4_ptitle").textContent =
+    `t=${t.toFixed(1)}s prompt v3·精简 九类窗口概率`;
+}
+function chip(el, st, name){
+  el.classList.remove("ok","partial","run","none");
+  if(!st){ el.textContent = name + " 未开始"; el.classList.add("none"); return; }
+  const w = st.n_windows == null ? "" : ` ${st.n_windows}窗`;
+  if(st.done && !st.incomplete){ el.textContent = `${name} 完成${w}`; el.classList.add("ok"); }
+  else if(st.done && st.incomplete){ el.textContent = `${name} 部分（截止）${w}`; el.classList.add("partial"); }
+  else { el.textContent = `${name} 进行中${w}`; el.classList.add("run"); }
+}
+function render(data){
+  DATA = data;
+  const stA = data.status && data.status.a, stB = data.status && data.status.b;
+  const apSt = data.status && data.status.ap;
+  const cSt = data.status && data.status.c, dSt = data.status && data.status.d;
+  chip(document.getElementById("st_a"), stA, "8B v3");
+  chip(document.getElementById("st_b"), stB, "32B v3");
+  if(apSt){ chip(document.getElementById("st_c"), apSt, "AP"); }
+  else { document.getElementById("st_c").style.display = "none"; }
+  if(cSt){ chip(document.getElementById("st_ca"), cSt, "裁8B v3"); }
+  else { document.getElementById("st_ca").style.display = "none"; }
+  if(dSt){ chip(document.getElementById("st_cb"), dSt, "裁32B v3"); }
+  else { document.getElementById("st_cb").style.display = "none"; }
+  const oaSt = data.status && data.status.oa, obSt = data.status && data.status.ob;
+  if(oaSt){ chip(document.getElementById("st_oa"), oaSt, "旧8B"); }
+  else { document.getElementById("st_oa").style.display = "none"; }
+  if(obSt){ chip(document.getElementById("st_ob"), obSt, "旧32B"); }
+  else { document.getElementById("st_ob").style.display = "none"; }
+  const vaSt = data.status && data.status.va, vbSt = data.status && data.status.vb;
+  if(vaSt){ chip(document.getElementById("st_va"), vaSt, "精简8B"); }
+  else { document.getElementById("st_va").style.display = "none"; }
+  if(vbSt){ chip(document.getElementById("st_vb"), vbSt, "精简32B"); }
+  else { document.getElementById("st_vb").style.display = "none"; }
+  document.getElementById("cnt").textContent =
+    `${data.n_videos} 条视频 · 8B ${stA?stA.n_videos:"0"} 条 / 32B ${stB?stB.n_videos:"0"} 条已标注` +
+    (apSt ? ` · AP ${apSt.n_videos} 条` : "") +
+    (cSt ? ` · 裁剪 ${cSt.n_videos} 条` : "");
+  document.getElementById("crop_cnt").textContent =
+    `${data.n_videos} 条视频` + (cSt ? ` · 裁剪完成 ${cSt.n_videos} 条` : " · 裁剪未开始");
+  document.getElementById("old_cnt").textContent =
+    `旧prompt ${data.n_videos} 条 · 旧8B ${oaSt?oaSt.n_videos:0} / 旧32B ${obSt?obSt.n_videos:0} 条`;
+  document.getElementById("v4_cnt").textContent =
+    `prompt v3·精简 ${data.n_videos} 条 · 8B ${vaSt?vaSt.n_videos:0} / 32B ${vbSt?vbSt.n_videos:0} 条`;
+  // dynamic comparison panels: status chips in the head + timeline rows
+  const stExtra = document.getElementById("st_extra");
+  stExtra.innerHTML = "";
+  const exBox = document.getElementById("extra_tls");
+  exBox.innerHTML = "";
+  (data.extra_tags||[]).forEach(tag=>{
+    const st = (data.status||{})["x_"+tag];
+    const c = document.createElement("span");
+    c.className = "chip none";
+    chip(c, st, tag);
+    stExtra.appendChild(c);
+    const lab = document.createElement("div");
+    lab.className = "tl-label";
+    lab.textContent = tag + (st ? `（${st.n_videos} 条${st.n_windows!=null?" · "+st.n_windows+"窗":""}）` : "（无数据）");
+    const tl = document.createElement("div");
+    tl.className = "tl"; tl.id = "tl_x_"+tag;
+    tl.innerHTML = '<div class="hoverline"></div>';
+    exBox.appendChild(lab); exBox.appendChild(tl);
+  });
+  const vl = document.getElementById("vlist"); vl.innerHTML = "";
+  data.videos.forEach((v,i)=>{
+    const d=document.createElement("div");
+    d.className="vitem"+(i===0?" on":"");
+    const na=(v.a_windows||[]).length, nb=(v.b_windows||[]).length;
+    const nap=(v.ap_segments||[]).length, nc=(v.c_windows||[]).length;
+    const no=(v.o_a_windows||[]).length, nv=(v.v4_a_windows||[]).length;
+    d.innerHTML=`<div class="rid">${v.rel.split("/")[0]}</div>
+      <div class="ag">${v.duration.toFixed(1)}s · 8B ${na}窗 · 32B ${nb}窗${nap?` · AP✓`:""}${nc?` · 裁✓`:""}${no?` · 旧✓`:""}${nv?` · 精简✓`:""}</div>`;
+    d.onclick=()=>pick(i);
+    vl.appendChild(d);
+  });
+  if(data.videos.length) pick(Math.min(CUR_IDX, data.videos.length-1));
+}
+async function init(){
+  if(window.INLINE_DATA){ render(window.INLINE_DATA); return; }
+  document.getElementById("refresh").style.display="inline-block";
+  document.getElementById("refresh").onclick=()=>refreshData();
+  loadTags();
+  render(await (await fetch("/api/data")).json());
+  setInterval(async()=>{
+    const bDone = DATA.status && DATA.status.b && DATA.status.b.done;
+    const dDone = !DATA.status || !DATA.status.d || DATA.status.d.done;
+    const exBusy = DATA.status && Object.keys(DATA.status).some(
+      k => k.startsWith("x_") && DATA.status[k] && !DATA.status[k].done);
+    if(!(bDone && dDone) || exBusy){
+      try{ await refreshData(); }catch(e){}
+    }
+  }, 60000);
+}
+
+/* ---------- comparison-tag selector ---------- */
+async function loadTags(){
+  const box = document.getElementById("cmp_tags");
+  try{
+    const r = await (await fetch("/api/tags")).json();
+    TAG_POOL = r.tags || [];
+    renderTagSelector();
+  }catch(e){ box.textContent = "tag 列表加载失败: "+e; }
+}
+function renderTagSelector(){
+  const box = document.getElementById("cmp_tags");
+  box.innerHTML = "";
+  if(!TAG_POOL.length){ box.textContent = "暂无可选 tag"; return; }
+  TAG_POOL.forEach(t=>{
+    const lab = document.createElement("label");
+    lab.style.cssText = "margin-right:12px;font-size:11px;color:#9aa0a6;cursor:pointer;white-space:nowrap";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = EXTRA_TAGS.includes(t.tag);
+    cb.onchange = ()=>{
+      if(cb.checked){ if(!EXTRA_TAGS.includes(t.tag)) EXTRA_TAGS.push(t.tag); }
+      else EXTRA_TAGS = EXTRA_TAGS.filter(x=>x!==t.tag);
+      refreshData();
+    };
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(` ${t.tag}（${t.n_docs}条${t.incomplete?" · 未完":""}）`));
+    box.appendChild(lab);
+  });
+}
+async function refreshData(){
+  const q = EXTRA_TAGS.length ? "?extra=" + encodeURIComponent(EXTRA_TAGS.join(",")) : "";
+  render(await (await fetch("/api/data"+q)).json());
+}
+
+/* ---------- tabs & playground ---------- */
+const LEGEND_ZH = {resting:"休息", active:"活动", eating:"吃草", drinking:"喝水", grooming:"理毛", digging:"刨地", bellyup:"仰躺", none:"无兔子", unknown:"不确定", notvisible:"帧不可见", gap:"AP间隙"};
+let PG_STATUS = null;
+
+function showTab(which){
+  ["cmp","crop","old","v4","pg","pe"].forEach(k=>{
+    document.getElementById("tab_"+k).classList.toggle("on", which===k);
+    document.getElementById(k).style.display = which===k ? "" : "none";
+  });
+  document.getElementById("side").style.display = which==="pg" ? "none" : "";
+  if(which==="pg") pgStatus();
+  if(which==="pe") peStatus();
+}
+function wireTimeline(el, dur, player, onClick){
+  el.onmousemove = e=>{ const r=el.getBoundingClientRect();
+    const hl=el.querySelector(".hoverline"); hl.style.display="block"; hl.style.left=(e.clientX-r.left)+"px"; };
+  el.onmouseleave = ()=>{ el.querySelector(".hoverline").style.display="none"; };
+  el.onclick = e=>{ const r=el.getBoundingClientRect();
+    const t=(e.clientX-r.left)/r.width*dur;
+    player.currentTime=t; if(player.paused) player.play(); if(onClick) onClick(t); };
+}
+function escHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function legendHtml(){
+  return Object.entries(COLORS).map(([k,c])=>`<span><i style="background:${c}"></i>${k} ${LEGEND_ZH[k]||""}</span>`).join("");
+}
+async function pgStatus(){
+  try{
+    PG_STATUS = await (await fetch("/api/vlm_status")).json();
+    const mm = PG_STATUS.models.map(m=>`${m.desc}${m.ready?"":"（未下载）"}`).join(" · ");
+    document.getElementById("pg_status").textContent =
+      `显存空闲 ${PG_STATUS.vram_free_gib} GiB · 已加载: ${PG_STATUS.loaded||"无"}${PG_STATUS.busy?" · 推理中":""} · ${mm}`;
+    const ta = document.getElementById("pg_prompt");
+    if(!ta.dataset.touched) ta.value = PG_STATUS.default_prompt;
+  }catch(e){ document.getElementById("pg_status").textContent = "状态获取失败: "+e; }
+}
+function pgLoadVideo(){
+  const p = document.getElementById("pg_path").value.trim();
+  if(!p){ document.getElementById("pg_msg").textContent = "请先填视频路径"; return; }
+  document.getElementById("pg_player").src = "/api/video?path=" + encodeURIComponent(p);
+}
+function pgUseCurrent(){
+  if(!CUR || !PG_STATUS || !PG_STATUS.batch_dir){
+    document.getElementById("pg_msg").textContent = "先在「批量对比」页左侧选中一个视频"; return;
+  }
+  document.getElementById("pg_path").value =
+    PG_STATUS.batch_dir.replace(/\\/g,"/").replace(/\/+$/,"") + "/" + CUR.rel;
+  pgLoadVideo();
+}
+function pgResetPrompt(){
+  const ta = document.getElementById("pg_prompt");
+  if(PG_STATUS && PG_STATUS.default_prompt) ta.value = PG_STATUS.default_prompt;
+  delete ta.dataset.touched;
+}
+async function pgRun(){
+  const btn = document.getElementById("pg_run");
+  const body = {
+    video_path: document.getElementById("pg_path").value.trim(),
+    prompt: document.getElementById("pg_prompt").value,
+    model: document.getElementById("pg_model").value,
+    window_sec: parseFloat(document.getElementById("pg_w").value)||6.0,
+    stride_sec: parseFloat(document.getElementById("pg_s").value)||3.0,
+    frames: parseInt(document.getElementById("pg_f").value)||8,
+    max_windows: parseInt(document.getElementById("pg_maxwin").value)||0,
+    free_form: document.getElementById("pg_free").checked,
+  };
+  btn.disabled = true;
+  document.getElementById("pg_msg").textContent = "推理中…（首次加载模型约 1-2 分钟）";
+  try{
+    const r = await fetch("/api/vlm_infer", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const res = await r.json();
+    if(!res.ok) throw new Error(res.error || ("HTTP "+r.status));
+    pgRender(res);
+    document.getElementById("pg_msg").textContent =
+      `完成：${res.n_windows} 窗 / ${res.elapsed_sec}s · ${res.model_desc}` +
+      (res.truncated ? "（已达窗口上限，截断）" : "") + (res.errors ? `（${res.errors.length} 个窗口出错）` : "");
+  }catch(e){
+    document.getElementById("pg_msg").textContent = "失败：" + e.message;
+  }finally{ btn.disabled = false; pgStatus(); }
+}
+function pgRender(res){
+  const box = document.getElementById("pg_result");
+  const v = document.getElementById("pg_player");
+  if(res.free_form){
+    box.innerHTML = `<div class="pgbox"><h4>自由问答（${res.n_windows} 窗）</h4>` +
+      (res.texts||[]).map(t=>`<div class="winrow"><span class="t">${t.start.toFixed(1)}-${t.end.toFixed(1)}s</span><span>${escHtml(t.text)}</span></div>`).join("") +
+      `</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="legend">${legendHtml()}</div>
+    <div class="tl-label">结果时间轴（点击跳转播放）</div>
+    <div class="tl" id="pg_tl"><div class="hoverline"></div></div>
+    <div class="pgbox"><h4 id="pg_ptitle">窗口概率</h4><div id="pg_probs"></div></div>
+    <div class="pgbox"><h4>窗口明细（${res.n_windows} 窗）</h4><div id="pg_wins"></div></div>`;
+  const tl = document.getElementById("pg_tl");
+  drawTimeline(tl, segsToSpans(res.segments, [], res.duration), res.duration);
+  tl.onmousemove = e=>{ const r=tl.getBoundingClientRect();
+    const hl=tl.querySelector(".hoverline"); hl.style.display="block"; hl.style.left=(e.clientX-r.left)+"px"; };
+  tl.onmouseleave = ()=>{ tl.querySelector(".hoverline").style.display="none"; };
+  const showWin = t=>{
+    const w = (res.windows||[]).filter(x=>t>=x.start-0.001 && t<x.end+0.001);
+    document.getElementById("pg_probs").innerHTML = probsRows(w, res.model_desc);
+    document.getElementById("pg_ptitle").textContent = `t=${t.toFixed(1)}s 概率`;
+  };
+  tl.onclick = e=>{ const r=tl.getBoundingClientRect();
+    const t=(e.clientX-r.left)/r.width*res.duration;
+    v.currentTime=t; if(v.paused) v.play(); showWin(t); };
+  document.getElementById("pg_wins").innerHTML = (res.windows||[]).map(w=>
+    `<div class="winrow" style="cursor:pointer" data-t="${((w.start+w.end)/2).toFixed(2)}" title="${escHtml(w.evidence||"").replace(/"/g,"&quot;")}">
+      <span class="t">${w.start.toFixed(1)}-${w.end.toFixed(1)}s</span>
+      <span style="color:${COLORS[w.label]||"#ccc"};font-weight:500">${escHtml(w.label)}</span>
+      <span>conf ${(w.confidence*100).toFixed(1)}%</span>
+      ${w.review_reason && w.review_reason!=="none"?`<span style="color:#e8c268">需复核</span>`:""}
+      ${w.parse_error?'<span style="color:#e8c268">解析失败</span>':""}</div>`).join("");
+  document.querySelectorAll("#pg_wins .winrow").forEach(n=>{
+    n.onclick = ()=>{ v.currentTime=parseFloat(n.dataset.t); if(v.paused) v.play(); }; });
+  if(res.windows && res.windows.length) showWin(res.windows[0].start);
+}
+document.getElementById("pg_prompt").oninput = function(){ this.dataset.touched="1"; };
+
+/* ---------- prompt-experiment batch tab ---------- */
+async function peStatus(){
+  try{
+    const st = await (await fetch("/api/prompt_run_status")).json();
+    PE_STATUS = st;
+    if(PE_DEFAULT === null){
+      try{
+        const vs = await (await fetch("/api/vlm_status")).json();
+        PE_DEFAULT = vs.default_prompt || "";
+      }catch(e){ PE_DEFAULT = ""; }
+      const ta = document.getElementById("pe_prompt");
+      if(!ta.dataset.touched && PE_DEFAULT) ta.value = PE_DEFAULT;
+    }
+    const sel = document.getElementById("pe_hist");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— 选择存档 —</option>' +
+      (st.prompts||[]).map(p=>`<option value="${escHtml(p.tag)}">${escHtml(p.tag)}</option>`).join("");
+    sel.value = cur;
+    const msg = document.getElementById("pe_msg");
+    const box = document.getElementById("pe_progress");
+    const p = st.progress;
+    if(p){
+      box.style.display = "";
+      const total = Math.max(1, st.meta.limit||50);
+      const pct = Math.min(100, Math.round(p.n_docs/total*100));
+      const fill = document.getElementById("pe_fill");
+      fill.style.width = pct+"%";
+      fill.style.background = p.running ? "#1d9e75" : (st.returncode===0 ? "#639922" : "#e24b4a");
+      document.getElementById("pe_ptitle").textContent =
+        `任务 ${p.tag}（${st.meta.model_desc||""} · ${st.meta.prompt_mode||"full"} · ${total} 条）`;
+      document.getElementById("pe_pline").textContent =
+        `${p.n_docs}/${total} 条 · ${p.n_windows} 窗` +
+        (p.n_errors ? ` · ${p.n_errors} 条出错` : "") +
+        (p.running ? " · 进行中" : (st.returncode===0 ? " · 已完成" : " · 已退出 rc="+(st.returncode??"?"))) +
+        (st.meta.started_at ? ` · 开始 ${st.meta.started_at}` : "") +
+        (st.meta.log ? ` · 日志 ${st.meta.log}` : "");
+      if(!p.running && p.n_docs>0){
+        msg.textContent = `任务 ${p.tag} 已结束 → 到「批量对比」页「选择对比」勾选 ${p.tag}`;
+      }
+    } else {
+      box.style.display = "none";
+    }
+    document.getElementById("pe_status").textContent =
+      (st.running ? "批量任务运行中" : "无运行中任务") +
+      ` · prompt 存档 ${(st.prompts||[]).length} 份`;
+    if(st.running && !PE_POLL) PE_POLL = setInterval(peStatus, 5000);
+    if(!st.running && PE_POLL){
+      clearInterval(PE_POLL); PE_POLL = null;
+      if(p){ loadTags(); refreshData().catch(()=>{}); }
+    }
+  }catch(e){
+    document.getElementById("pe_status").textContent = "状态获取失败: "+e;
+  }
+}
+async function peRun(){
+  const btn = document.getElementById("pe_run");
+  const body = {
+    prompt: document.getElementById("pe_prompt").value,
+    model: document.getElementById("pe_model").value,
+    prompt_mode: document.getElementById("pe_mode").value,
+    limit: parseInt(document.getElementById("pe_limit").value)||50,
+    window_sec: parseFloat(document.getElementById("pe_w").value)||6.0,
+    stride_sec: parseFloat(document.getElementById("pe_s").value)||3.0,
+    frames: parseInt(document.getElementById("pe_f").value)||8,
+    tag: document.getElementById("pe_tag").value.trim(),
+  };
+  btn.disabled = true;
+  document.getElementById("pe_msg").textContent = "启动中…";
+  try{
+    const r = await fetch("/api/prompt_run", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const res = await r.json();
+    if(!res.ok) throw new Error(res.error || ("HTTP "+r.status));
+    document.getElementById("pe_msg").textContent =
+      `已启动 tag=${res.tag}（${res.model_desc} · ${res.prompt_mode} · ${res.limit} 条）`;
+    peStatus();
+  }catch(e){
+    document.getElementById("pe_msg").textContent = "启动失败：" + e.message;
+  }finally{ btn.disabled = false; }
+}
+async function peLoadArchive(){
+  const tag = document.getElementById("pe_hist").value;
+  const msg = document.getElementById("pe_msg");
+  if(!tag){ msg.textContent = "先选一个存档"; return; }
+  try{
+    const r = await fetch("/api/prompt_archive?tag=" + encodeURIComponent(tag));
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    document.getElementById("pe_prompt").value = await r.text();
+    document.getElementById("pe_prompt").dataset.touched = "1";
+    msg.textContent = `已载入存档 ${tag}，改完再跑`;
+  }catch(e){ msg.textContent = "载入失败: "+e.message; }
+}
+function peResetPrompt(){
+  const ta = document.getElementById("pe_prompt");
+  if(PE_DEFAULT) ta.value = PE_DEFAULT;
+  delete ta.dataset.touched;
+  document.getElementById("pe_msg").textContent = "已恢复内置 full-spec prompt";
+}
+document.getElementById("pe_prompt").oninput = function(){ this.dataset.touched="1"; };
+
+init();
+</script>
+</body>
+</html>
