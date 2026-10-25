@@ -1,6 +1,7 @@
 @echo off
 REM ============================================================
 REM  Step 5: Evaluate a teacher or distilled student checkpoint.
+REM  Report shows optimized segment_iou_macro (Time IoU) only.
 REM  Results (JSON, CSV, traces, and timeline PNGs) are saved beside
 REM  the selected checkpoint in a timestamped test_results folder.
 REM ============================================================

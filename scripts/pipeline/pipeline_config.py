@@ -21,12 +21,12 @@ SPECIES = {
     "rabbit": {
         "class_names": ["resting", "active", "eating", "drinking"],
         "label_map": {"resting": 0, "active": 1, "eating": 2, "drinking": 3},
-        "yolo_model": r"E:\ActionRecognition\detection-src\rabbit-detect\runs\rabbit-yolo11n-0603\weights\rabbit-yolo11n-0603.pt",
+        "yolo_model": r"E:\ActionRecognition\detection-src\rabbit-detect\runs\yolo11s_scale0.6_fliplr0.4\weights\rabbit-yolo11s-0923.pt",
         "target_classes": [0],
         "raw_root": r"dataset\raw_videos\rabbit",
         "dataset_root": r"dataset\rabbit",
         "path_token": "rabbit",
-        "teacher_checkpoint": r"E:\ActionRecognition\behavionRecognition-src\outputs\rabbit\2026-07-06\teacher_finetuned_3cls_0706\rabbit_teacher_0706_ema-videos.pth",
+        "teacher_checkpoint": r"E:\ActionRecognition\behavionRecognition-src\outputs\rabbit\2026-06-24\0624_repvit_best_distilled_ema.pth",
     },
 }
 

@@ -4,6 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from scripts.pipeline import run_test
+from utils.metrics import compute_time_agreement, compute_segment_iou, compute_event_detection, compute_transition_metrics
 import torch
 
 
@@ -42,12 +43,82 @@ def test_pet_evaluation_uses_four_class_order():
 
 def test_metric_row_uses_event_f1_at_tiou_half():
     metric = {"p0_quality": {"segment_iou_macro": 0.2,
-              "transition_f1": {"f1": 0.3, "precision": 0.4, "recall": 0.25},
-              "event_detection_f1": {"macro": 0.4, "by_tiou": {"0.3": 0.5, "0.7": 0.2}}},
+              "time_agreement": {"accuracy": 0.8, "unknown_rate": 0.0, "gt_ms": 1000},
+              "segment_iou_by_class": {"EATING": 0.8},
+              "transition_f1": {"f1": 0.3, "precision": 0.4, "recall": 0.25, "tp": 1, "fp": 1, "fn": 1},
+              "event_detection_f1": {"macro": 0.4, "by_tiou": {"0.3": 0.5, "0.7": 0.2},
+                                     "by_class": {"EATING": {"tp": 1, "fp": 2, "fn": 0}}}},
               "artifacts": {"timeline_plot": "x.png"}}
     row = run_test._metric_row(Path("video.mp4"), metric)
     assert row["event_f1_tiou_0.5"] == 0.4
     assert row["transition_f1"] == 0.3
+    assert row["time_accuracy"] == 0.8
+    assert row["segment_iou_macro"] == 0.2
+    assert (row["event_tp"], row["event_fp"], row["event_fn"]) == (1, 2, 0)
+
+
+def test_time_accuracy_and_event_counts_preserve_fragmentation_penalty():
+    gt = [{"start_ms": 0, "end_ms": 1000, "state": "EATING"}]
+    pred = [{"start_ms": 0, "end_ms": 200, "state": "ACTIVE"},
+            {"start_ms": 200, "end_ms": 700, "state": "EATING"},
+            {"start_ms": 700, "end_ms": 800, "state": "UNKNOWN"},
+            {"start_ms": 800, "end_ms": 1000, "state": "EATING"}]
+    agreement = compute_time_agreement(gt, pred)
+    macro, _ = compute_segment_iou(gt, pred)
+    events, _ = compute_event_detection(gt, pred)
+    assert (agreement["gt_ms"], agreement["correct_ms"], agreement["unknown_ms"]) == (1000, 700, 100)
+    assert agreement["accuracy"] == 0.7
+    assert macro == 0.35
+    assert compute_segment_iou(gt, pred, gt_classes_only=True)[0] == 0.7
+    assert events["by_class"]["EATING"]["tp"] == 1
+    assert events["by_class"]["EATING"]["fp"] == 1
+    assert events["by_class"]["ACTIVE"]["fp"] == 1
+
+
+def test_pooled_aggregation_uses_durations_and_counts():
+    def metric(gt_ms, correct_ms, state, fp):
+        return {"p0_quality": {
+            "time_agreement": {"gt_ms": gt_ms, "correct_ms": correct_ms, "unknown_ms": 0,
+                               "by_class": {state: {"gt_ms": gt_ms, "pred_ms": correct_ms, "intersection_ms": correct_ms}}},
+            "event_detection_f1": {"by_class": {state: {"tp": 1, "fp": fp, "fn": 0}}},
+            "transition_f1": {"tp": 0, "fp": fp, "fn": 0},
+        }}
+    agg = run_test._aggregate_quality(
+        [{"time_iou_macro": 0.5}, {"time_iou_macro": 0.9}],
+        [metric(1000, 500, "EATING", 1), metric(9000, 8100, "EATING", 0)],
+    )
+    assert agg["time_accuracy"] == 0.86
+    assert agg["time_iou_macro"] == 0.86
+    assert agg["segment_iou_macro"] == 0.86
+    assert agg["time_iou_by_class"] == {"EATING": 0.86}
+    assert agg["pooled_time_iou_macro"] == 0.86
+    assert agg["transition_counts"] == {"tp": 0, "fp": 1, "fn": 0}
+    assert agg["pooled_transition_f1"] == 0.0
+
+
+def test_pooled_iou_counts_false_predictions_from_videos_without_that_gt_class():
+    def metric(state, predicted_counts):
+        return {"p0_quality": {
+            "time_agreement": {"gt_ms": 1000, "correct_ms": 500, "unknown_ms": 0,
+                               "by_class": predicted_counts},
+            "event_detection_f1": {"by_class": {}},
+            "transition_f1": {"tp": 0, "fp": 0, "fn": 0},
+        }}
+    eating = metric("EATING", {
+        "EATING": {"gt_ms": 1000, "pred_ms": 500, "intersection_ms": 500},
+        "ACTIVE": {"gt_ms": 0, "pred_ms": 500, "intersection_ms": 0},
+    })
+    active = metric("ACTIVE", {
+        "ACTIVE": {"gt_ms": 1000, "pred_ms": 1000, "intersection_ms": 1000},
+    })
+    agg = run_test._aggregate_quality([{}, {}], [eating, active])
+    assert agg["time_iou_by_class"] == {"ACTIVE": 0.6667, "EATING": 0.5}
+    assert agg["segment_iou_macro"] == 0.5834
+
+
+def test_no_transition_has_undefined_f1_and_zero_counts():
+    result, _, _ = compute_transition_metrics([], [], 3000, 3000)
+    assert result == {"f1": None, "precision": None, "recall": None, "tp": 0, "fp": 0, "fn": 0}
 
 
 def test_mean_handles_transition_f1_and_legacy_dict():
@@ -67,12 +138,12 @@ def test_student_inference_uses_forward_seq_not_single_frame_forward(tmp_path, m
 
         def forward_seq(self, batch):
             assert batch.ndim == 5
-            return torch.tensor([[0.0, 2.0, 0.0]])
+            return torch.tensor([[0.0, 2.0, 0.0, 0.0]])
 
     monkeypatch.setattr(
         run_test,
         "_video_frames",
-        lambda *_args, **_kwargs: iter([(0, 0.0, torch.zeros(16, 3, 2, 2))]),
+        lambda *_args, **_kwargs: iter([(0, 0.0, torch.zeros(16, 3, 2, 2), None)]),
     )
     trace = tmp_path / "track_trace.jsonl"
     summary = tmp_path / "summary.json"
@@ -199,9 +270,11 @@ def test_write_evaluation_report_has_summary_and_one_row_per_video(tmp_path):
         "species": "pet", "model_kind": "student", "checkpoint": "ckpt.pth",
         "detector": "yolo.pt", "expand_ratio": 1.25, "annotated_videos": 1,
         "sample_every_seconds": 0.5,
-        "aggregate": {"time_iou_macro": 0.5, "event_f1_tiou_0.3": 0.6,
+        "aggregate": {"segment_iou_macro": 0.5, "time_iou_macro": 0.5,
+                      "time_iou_by_class": {"ACTIVE": 0.25, "RESTING": 0.75}, "event_f1_tiou_0.3": 0.6,
                       "event_f1_tiou_0.5": 0.4, "event_f1_tiou_0.7": 0.2, "transition_f1": None},
         "videos": [{"video": "video_a.mp4", "gt_label": "resting", "eval_seconds": 59.9,
+                    "segment_iou_macro": 0.5, "time_iou_by_class": {"RESTING": 0.5},
                     "time_iou_macro": 0.5, "event_f1_tiou_0.3": 0.6, "event_f1_tiou_0.5": 0.4,
                     "event_f1_tiou_0.7": 0.2, "transition_f1": 0.1, "timeline_plot": str(plot)}],
     }
@@ -212,10 +285,24 @@ def test_write_evaluation_report_has_summary_and_one_row_per_video(tmp_path):
     assert "<img src='video_a/gt_system_timeline.png'" in content
     assert "resting" in content
     assert content.count("Timeline Comparison") == 1
+    assert content.count("segment_iou_macro (Time IoU)") == 3
+    assert "<th>ACTIVE Time IoU</th><td>0.2500</td>" in content
+    assert "<th>RESTING Time IoU</th><td>0.7500</td>" in content
+    assert "<td>0.5000</td><td>-</td><td>0.5000</td>" in content
+    assert "<tr><td>ACTIVE Time IoU</td><td>-</td></tr>" in content
+    assert "Event F1" not in content
+    assert "Time accuracy" not in content
+    assert "Transition F1" not in content
 
 
 def test_interactive_args_uses_numbered_choices():
-    answers = iter(["2", "2", r"E:\ckpt.pth"])
+    answers = iter(["2", "3", r"E:\ckpt.pth"])
     argv = run_test._interactive_args(input_fn=lambda _p: next(answers))
     assert argv == ["--species", "rabbit", "--model-kind", "student", "--checkpoint", r"E:\ckpt.pth"]
+
+
+def test_interactive_rabbit_fusion_uses_dashboard_default():
+    answers = iter(["2", "1"])
+    argv = run_test._interactive_args(input_fn=lambda _p: next(answers))
+    assert argv == ["--species", "rabbit", "--model-kind", "fusion", "--checkpoint", "dashboard_default"]
 

@@ -501,11 +501,14 @@ def _total_intersection_ms(left: list[dict[str, Any]], right: list[dict[str, Any
 def compute_segment_iou(
     gt_segments: list[dict[str, Any]],
     pred_segments: list[dict[str, Any]],
+    *,
+    gt_classes_only: bool = False,
 ) -> tuple[float | None, dict[str, float]]:
     if not gt_segments:
         return None, {}
     by_class: dict[str, float] = {}
-    for state in _states_for_metrics(gt_segments, pred_segments):
+    states = sorted({segment["state"] for segment in gt_segments}) if gt_classes_only else _states_for_metrics(gt_segments, pred_segments)
+    for state in states:
         gt_state = _segments_for_state(gt_segments, state)
         pred_state = _segments_for_state(pred_segments, state)
         intersection = _total_intersection_ms(gt_state, pred_state)
@@ -513,6 +516,40 @@ def compute_segment_iou(
         by_class[state] = intersection / union if union > 0 else 0.0
     macro = sum(by_class.values()) / len(by_class) if by_class else None
     return (_round_float(macro, 4) if macro is not None else None), {state: _round_float(value, 4) for state, value in by_class.items()}
+
+
+def compute_time_agreement(
+    gt_segments: list[dict[str, Any]],
+    pred_segments: list[dict[str, Any]],
+) -> dict[str, Any]:
+    gt_ms = sum(_duration(segment) for segment in gt_segments)
+    correct_ms = sum(
+        _overlap_ms(gt, pred)
+        for gt in gt_segments for pred in pred_segments
+        if gt["state"] == pred["state"]
+    )
+    unknown_ms = sum(
+        _overlap_ms(gt, pred)
+        for gt in gt_segments for pred in pred_segments
+        if pred["state"] == UNKNOWN_STATE
+    )
+    by_class = {}
+    for state in _states_for_metrics(gt_segments, pred_segments):
+        gt_state = _segments_for_state(gt_segments, state)
+        pred_state = _segments_for_state(pred_segments, state)
+        by_class[state] = {
+            "gt_ms": sum(_duration(item) for item in gt_state),
+            "pred_ms": sum(_duration(item) for item in pred_state),
+            "intersection_ms": _total_intersection_ms(gt_state, pred_state),
+        }
+    return {
+        "gt_ms": gt_ms,
+        "correct_ms": correct_ms,
+        "unknown_ms": unknown_ms,
+        "accuracy": _round_float(correct_ms / gt_ms, 4) if gt_ms else None,
+        "unknown_rate": _round_float(unknown_ms / gt_ms, 4) if gt_ms else None,
+        "by_class": by_class,
+    }
 
 
 def _gt_events_from_annotations(annotations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -572,6 +609,9 @@ def _event_scores_for_threshold(
             "precision": _round_float(precision, 4),
             "recall": _round_float(recall, 4),
             "f1": _round_float(score_f1, 4),
+            "tp": len(matched_gt),
+            "fp": len(pred_state_events) - len(matched_pred),
+            "fn": len(gt_state_events) - len(matched_gt),
         }
         per_class_recall[state] = _round_float(recall, 4)
     return by_class, per_class_recall
@@ -676,7 +716,7 @@ def compute_transition_metrics(
     latency_match_window_ms: int,
 ) -> tuple[dict[str, float | None], float | None, float | None]:
     if not gt_transitions and not pred_transitions:
-        return {"f1": None, "precision": None, "recall": None}, None, None
+        return {"f1": None, "precision": None, "recall": None, "tp": 0, "fp": 0, "fn": 0}, None, None
     transition_matches = _match_transitions(gt_transitions, pred_transitions, transition_tolerance_ms)
     precision = len(transition_matches) / len(pred_transitions) if pred_transitions else 0.0
     recall = len(transition_matches) / len(gt_transitions) if gt_transitions else 0.0
@@ -684,6 +724,9 @@ def compute_transition_metrics(
         "f1": _round_float(_f1(precision, recall), 4),
         "precision": _round_float(precision, 4),
         "recall": _round_float(recall, 4),
+        "tp": len(transition_matches),
+        "fp": len(pred_transitions) - len(transition_matches),
+        "fn": len(gt_transitions) - len(transition_matches),
     }
 
     boundary_offsets = [float(offset) for _gt, _pred, offset in transition_matches]
@@ -1061,6 +1104,7 @@ def evaluate_behavior_metrics(
     summary_path: str | Path,
     annotations_path: str | Path,
     results_path: str | Path | None = None,
+    segment_iou_gt_classes_only: bool = False,
 ) -> dict[str, Any]:
     summary = _load_json(summary_path)
     annotations = load_annotations(annotations_path)
@@ -1112,7 +1156,9 @@ def evaluate_behavior_metrics(
         top_confusion_pairs: list[dict[str, Any]] = []
         segment_edit_score = None
     else:
-        segment_iou_macro, segment_iou_by_class = compute_segment_iou(clear_gt_segments, pred_clear_segments)
+        segment_iou_macro, segment_iou_by_class = compute_segment_iou(
+            clear_gt_segments, pred_clear_segments, gt_classes_only=segment_iou_gt_classes_only,
+        )
         event_detection_f1, per_class_event_recall = compute_event_detection(gt_event_segments, pred_event_segments)
         transition_f1, latency_p90_ms, boundary_offset_median_ms = compute_transition_metrics(
             gt_clear_transitions,
@@ -1122,6 +1168,8 @@ def evaluate_behavior_metrics(
         )
         false_state_duration_p90_ms, top_confusion_pairs = compute_confusion_and_false_duration(clear_gt_segments, pred_clear_segments)
         segment_edit_score = compute_segment_edit_score(clear_gt_segments, pred_clear_segments)
+
+    time_agreement = compute_time_agreement(clear_gt_segments, pred_clear_segments)
 
     ambiguous_hit_rate, late_commit_p90_ms = compute_ambiguous_transition_metrics(
         ambiguous_transitions,
@@ -1153,8 +1201,9 @@ def evaluate_behavior_metrics(
             "end_ms": eval_end_ms,
             "duration_ms": eval_duration_ms,
         },
-        "params": params,
+        "params": {**params, "segment_iou_gt_classes_only": segment_iou_gt_classes_only},
         "p0_quality": {
+            "time_agreement": time_agreement,
             "event_detection_f1": event_detection_f1,
             "segment_iou_macro": segment_iou_macro,
             "segment_iou_by_class": segment_iou_by_class,
@@ -1189,12 +1238,14 @@ def write_behavior_metrics(
     output_path: str | Path,
     timeline_plot_path: str | Path | None = None,
     results_path: str | Path | None = None,
+    segment_iou_gt_classes_only: bool = False,
 ) -> dict[str, Any]:
     metrics = evaluate_behavior_metrics(
         trace_path=trace_path,
         summary_path=summary_path,
         annotations_path=annotations_path,
         results_path=results_path,
+        segment_iou_gt_classes_only=segment_iou_gt_classes_only,
     )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
