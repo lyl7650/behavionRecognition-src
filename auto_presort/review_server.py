@@ -8,9 +8,12 @@ POST /api/doc        → {rel_path, action: save|approve, segments?} → 更新�
 POST /api/finish     → 写状态文件（供编排器轮询），状态文件路径见 make_server
 GET  /video/<rel>    → 视频文件（支持 Range/206，长视频拖动必需）
 """
+import hashlib
 import json
 import os
 import posixpath
+import subprocess
+import tempfile
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
@@ -20,6 +23,92 @@ from auto_presort import store
 _HTML_PATH = os.path.join(os.path.dirname(__file__), "review_app.html")
 
 VIDEO_EXTS = (".mp4", ".avi", ".mov", ".webm")
+_BROWSER_NATIVE_CODECS = {"h264"}
+
+
+def _normal_rel(rel):
+    """Normalize a URL/path relative to a review batch."""
+    return posixpath.normpath(unquote(rel).replace("\\", "/"))
+
+
+def _probe_video_codec(path):
+    """Return the first video stream codec, or None if it cannot be probed."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+    except OSError as exc:
+        print(f"[WARN] ffprobe unavailable; browser codec check skipped: {exc}",
+              flush=True)
+        return None
+    if proc.returncode != 0:
+        detail = proc.stderr.strip().splitlines()[-1:] or ["unknown ffprobe error"]
+        print(f"[WARN] ffprobe failed for {path}: {detail[0]}", flush=True)
+        return None
+    return next((line.strip().lower() for line in proc.stdout.splitlines()
+                 if line.strip()), None)
+
+
+def prepare_browser_video_overrides(batch_dir):
+    """Create H.264 review copies for codecs browsers commonly cannot decode.
+
+    The original files and their rel_paths remain unchanged.  The returned map
+    is consumed by ``make_server`` only for the browser's ``/video/`` requests.
+    """
+    overrides = {}
+    cache_dir = os.path.join(batch_dir, store.STORE_DIRNAME, "review-cache")
+
+    for root, dirs, files in os.walk(batch_dir):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for name in sorted(files):
+            if not name.lower().endswith(VIDEO_EXTS):
+                continue
+            source = os.path.join(root, name)
+            rel = os.path.relpath(source, batch_dir).replace("\\", "/")
+            codec = _probe_video_codec(source)
+            if not codec or codec in _BROWSER_NATIVE_CODECS:
+                continue
+
+            stat = os.stat(source)
+            token = hashlib.sha256(
+                f"{rel}\0{stat.st_size}\0{stat.st_mtime_ns}".encode("utf-8")
+            ).hexdigest()[:20]
+            cached = os.path.join(cache_dir, f"{token}.mp4")
+            if not os.path.isfile(cached) or os.path.getsize(cached) == 0:
+                os.makedirs(cache_dir, exist_ok=True)
+                fd, temp_path = tempfile.mkstemp(
+                    prefix=f"{token}.", suffix=".tmp.mp4", dir=cache_dir)
+                os.close(fd)
+                try:
+                    print(
+                        f"[review] converting non-browser codec {codec}: {rel}",
+                        flush=True,
+                    )
+                    proc = subprocess.run(
+                        ["ffmpeg", "-y", "-i", source, "-map", "0:v:0",
+                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                         "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an",
+                         temp_path],
+                        capture_output=True, text=True, encoding="utf-8",
+                        errors="replace",
+                    )
+                    if proc.returncode != 0 or not os.path.isfile(temp_path):
+                        detail = proc.stderr.strip().splitlines()[-1:] or [
+                            "unknown ffmpeg error"]
+                        raise RuntimeError(f"ffmpeg failed for {rel}: {detail[0]}")
+                    os.replace(temp_path, cached)
+                except FileNotFoundError as exc:
+                    raise RuntimeError(
+                        "ffmpeg is required to make browser review copies") from exc
+                finally:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+            overrides[_normal_rel(rel)] = cached
+            print(f"[review] browser copy ready: {rel}", flush=True)
+    return overrides
 
 
 def compute_stats(batch_dir):
@@ -58,8 +147,9 @@ def _default_state_file(batch_dir):
     return os.path.join(batch_dir, store.STORE_DIRNAME, "review_state.json")
 
 
-def make_server(batch_dir, port=8765, state_file=None):
+def make_server(batch_dir, port=8765, state_file=None, video_overrides=None):
     state_file = state_file or _default_state_file(batch_dir)
+    video_overrides = video_overrides or {}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # 静默访问日志
@@ -74,8 +164,7 @@ def make_server(batch_dir, port=8765, state_file=None):
             self.wfile.write(body)
 
         def _safe_video_path(self, rel):
-            rel = unquote(rel).replace("\\", "/")
-            norm = posixpath.normpath(rel)
+            norm = _normal_rel(rel)
             if norm.startswith("..") or posixpath.isabs(norm):
                 return None
             path = os.path.join(batch_dir, *norm.split("/"))
@@ -168,9 +257,14 @@ def make_server(batch_dir, port=8765, state_file=None):
             self._json({"ok": True, "state_file": state_file, "stats": state["stats"]})
 
         def _serve_video(self, rel):
-            path = self._safe_video_path(rel)
+            norm = _normal_rel(rel)
+            path = self._safe_video_path(norm)
             if path is None:
                 self._json({"error": "bad path"}, 404)
+                return
+            path = video_overrides.get(norm, path)
+            if not os.path.isfile(path):
+                self._json({"error": "review copy not found"}, 404)
                 return
             size = os.path.getsize(path)
             rng = self.headers.get("Range")

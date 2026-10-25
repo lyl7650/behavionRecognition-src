@@ -19,9 +19,24 @@ def main(argv=None):
                          "(default: <dir>/.autopresort/review_state.json)")
     a = ap.parse_args(argv)
 
-    from auto_presort.review_server import make_server
+    from auto_presort.review_server import (
+        make_server,
+        prepare_browser_video_overrides,
+    )
     try:
-        server = make_server(a.dir, port=a.port, state_file=a.state_file)
+        video_overrides = prepare_browser_video_overrides(a.dir)
+    except RuntimeError as exc:
+        print(f"[ERROR] Could not prepare browser review videos: {exc}")
+        return 1
+    except OSError as exc:
+        print(f"[ERROR] Could not inspect review videos: {exc}")
+        return 1
+
+    try:
+        server = make_server(
+            a.dir, port=a.port, state_file=a.state_file,
+            video_overrides=video_overrides,
+        )
     except OSError:
         print(f"[ERROR] Port {a.port} is already in use.")
         print("        Another review window is probably still open. Close it and try again,")

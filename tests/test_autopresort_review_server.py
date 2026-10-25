@@ -3,6 +3,8 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from pathlib import Path
+from types import SimpleNamespace
 
 
 def _start(batch_dir, state_file=None):
@@ -70,6 +72,36 @@ def test_video_range_request_returns_206(tmp_path):
             assert r.status == 206
             assert r.read() == b"4567"
             assert r.headers["Content-Range"] == "bytes 4-7/16"
+    finally:
+        server.shutdown()
+
+
+def test_non_browser_codec_uses_h264_review_copy(tmp_path, monkeypatch):
+    rs = importlib.import_module("auto_presort.review_server")
+    source = tmp_path / "v1.mp4"
+    source.write_bytes(b"source")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[0] == "ffprobe":
+            return SimpleNamespace(returncode=0, stdout="mpeg4\n", stderr="")
+        assert cmd[0] == "ffmpeg"
+        Path(cmd[-1]).write_bytes(b"converted")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(rs.subprocess, "run", fake_run)
+    overrides = rs.prepare_browser_video_overrides(str(tmp_path))
+    assert "v1.mp4" in overrides
+    assert Path(overrides["v1.mp4"]).read_bytes() == b"converted"
+    assert any("libx264" in cmd for cmd in calls if cmd[0] == "ffmpeg")
+
+    server = rs.make_server(str(tmp_path), port=0, video_overrides=overrides)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        with urllib.request.urlopen(f"{base}/video/v1.mp4") as response:
+            assert response.read() == b"converted"
     finally:
         server.shutdown()
 

@@ -63,6 +63,14 @@
   /* ── Main ── */
   #main { flex:1; padding:22px 26px; display:flex; flex-direction:column;
           min-width:0; overflow-y:auto; }
+  #topbar { display:flex; justify-content:flex-end; margin-bottom:12px; }
+  #finishBtn { padding:8px 16px; border:1px solid rgba(245,165,36,.55); border-radius:9px;
+               background:linear-gradient(180deg, rgba(245,165,36,.22), rgba(245,165,36,.10));
+               color:var(--fg); font:600 13px var(--sans); cursor:pointer;
+               box-shadow:0 4px 12px rgba(0,0,0,.25); }
+  #finishBtn:hover { background:linear-gradient(180deg, rgba(245,165,36,.32), rgba(245,165,36,.16));
+                     border-color:var(--accent); }
+  #finishBtn:disabled { opacity:.55; cursor:default; }
   #videowrap { position:relative; width:100%; line-height:0; }
   video { width:100%; max-height:55vh; background:#000; border-radius:12px;
           border:1px solid var(--line);
@@ -201,6 +209,9 @@
   <div id="vlist"></div>
 </div>
 <div id="main">
+  <div id="topbar">
+    <button id="finishBtn" title="Finish review: notify the retrain pipeline and continue automatically">Finish Review</button>
+  </div>
   <div id="videowrap">
     <video id="player" controls></video>
     <canvas id="boxcanvas"></canvas>
@@ -216,10 +227,6 @@
       <span id="confSegCount"></span>
       <button id="boxToggle" class="fbtn" style="flex:0 0 auto; max-width:none; padding:5px 12px;"
               title="Toggle YOLO detection boxes (B)">Boxes: off</button>
-      <button id="finishBtn" style="flex:0 0 auto; max-width:none; padding:5px 12px;
-              border:1px solid var(--line); border-radius:8px; background:var(--panel-hi);
-              color:var(--fg); font:inherit; cursor:pointer;"
-              title="Finish review: notify the retrain pipeline and continue automatically">Finish</button>
       <span id="status"></span>
     </div>
     <div id="legend"></div>
@@ -227,7 +234,7 @@
   <details class="gapinfo">
     <summary>Instructions / Shortcuts</summary>
     <div class="body">
-      Gray = model uncertain / no animal / boundary zone (no clip generated). <b>Left-click</b> on the timeline to click/drag = scrub playback (does not change labels); <b>Ctrl+Left-click</b> = edit labels: click a colored block to select it, drag its two ends to trim, or drag horizontally over empty space to create a new segment. To <b>relabel</b> the selected segment, click a color in the legend below; that color is also the label used for new segments you draw.<br>
+      Gray = model uncertain / no animal / boundary zone (no clip generated). Click a colored block to select it, drag its two ends to trim, or drag horizontally over empty timeline space to create a new segment. Click an empty point on the timeline to seek; use the seekbar above it to scrub playback. No Ctrl key is required for label editing. To <b>relabel</b> the selected segment, click a color in the legend below; that color is also the label used for new segments you draw.<br>
       Shortcuts: <kbd>Space</kbd> play/pause · <kbd>↑</kbd>/<kbd>↓</kbd> previous/next video · <kbd>Enter</kbd> Approve video · <kbd>Backspace</kbd> delete selected segment · <kbd>B</kbd> toggle YOLO detection boxes · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo last step.
     </div>
   </details>
@@ -243,7 +250,7 @@ let filter = "all"; // sidebar filter: all | labeled (has model-generated segmen
 let shownList = []; // rel_paths currently visible in sidebar (post-filter order), for ↑/↓ nav
 let drag = null; // {idx, side}  side: "l" | "r" | "create"
 let createAnchor = null; // press on empty space: {x, t}; no move = click-seek, move = create segment
-let scrub = false;       // Ctrl+drag timeline / drag seekbar: move playback only, don't touch labels
+let scrub = false;       // seekbar drag: move playback only, don't touch labels
 let undoStack = [], pendingSnap = null; // undo stack (per video)
 let showBoxes = false;                  // YOLO box overlay on/off (toggle button + "B")
 
@@ -511,10 +518,6 @@ function render() {
     el.textContent = `${s.label} ${(s.confidence ?? 0).toFixed(2)}`;
     el.innerHTML += "<div class='handle l'></div><div class='handle r'></div>";
     el.onmousedown = e => {
-      if (!e.ctrlKey) {          // no Ctrl: scrub playback, don't touch labels
-        scrub = true; player.currentTime = timeAtX(e.clientX);
-        e.stopPropagation(); e.preventDefault(); return;
-      }
       if (e.target.classList.contains("handle")) {
         pendingSnap = snapNow(); // snapshot before trimming, pushed to undo stack on release
         drag = { idx: i, side: e.target.classList.contains("l") ? "l" : "r" };
@@ -525,11 +528,7 @@ function render() {
     tlEl.appendChild(el);
   });
 }
-tlEl.onmousedown = e => {      // no Ctrl: scrub playback; Ctrl+empty space: click-seek or drag out a new segment
-  if (!e.ctrlKey) {
-    scrub = true; player.currentTime = timeAtX(e.clientX);
-    e.preventDefault(); return;
-  }
+tlEl.onmousedown = e => {      // empty space: click-seek or drag out a new segment
   if (e.target !== tlEl) return;
   createAnchor = { x: e.clientX, t: timeAtX(e.clientX) };
   e.preventDefault();
@@ -687,10 +686,10 @@ $("finishBtn").onclick = async () => {          // retrain pipeline polls /api/f
   }
   $("finishBtn").blur();
 };
-for (const btn of document.querySelectorAll(".fbtn")) {
+for (const btn of document.querySelectorAll(".fbtn[data-f]")) {
   btn.onclick = () => {
     filter = btn.dataset.f;
-    for (const b of document.querySelectorAll(".fbtn")) b.classList.toggle("active", b === btn);
+    for (const b of document.querySelectorAll(".fbtn[data-f]")) b.classList.toggle("active", b === btn);
     loadList();
   };
 }
@@ -698,6 +697,10 @@ for (const cb of document.querySelectorAll(".tierCheck")) {
   cb.onchange = () => loadList();
 }
 player.onloadeddata = () => drawBoxes();   // first frame ready → box has correct video dims
+player.onerror = () => {
+  const code = player.error ? ` (code ${player.error.code})` : "";
+  $("status").textContent = "Video playback failed" + code;
+};
 loadList().then(() => videos.length && loadVideo(videos[0].rel_path));
 </script>
 </body>
