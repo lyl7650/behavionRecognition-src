@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>VLM 審閱 · 篩選 + 編輯</title>
+<style>
+  :root{
+    --bg:#141418; --panel:#1d1d23; --panel2:#24242c; --line:#33333d;
+    --tx:#e4e4ea; --tx2:#9a9aa6; --acc:#6ea8fe;
+    --eating:#e8834a; --drinking:#4a9de8; --active:#58b95c;
+    --resting:#9a8fc2; --unknown:#d4b13f; --none:#4a4a52;
+    --grooming:#e2789f; --others:#8e95a3; --defecating:#a9714b; --stand:#45b0a8;
+    --ok:#3fb950; --warn:#f0553a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--tx);font:13px/1.5 "Segoe UI",system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{padding:8px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel)}
+  header h1{font-size:15px;font-weight:600}
+  .species-choice{display:flex;gap:6px;align-items:center;font-size:12px}
+  .species-choice label{display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
+  header .stat{color:var(--tx2);font-size:12px}
+  header .stat b{color:var(--acc)}
+  .hint{color:var(--tx2);font-size:11px}
+  input[type=text]{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px}
+  button{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:7px;padding:4px 12px;font-size:12px;cursor:pointer}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+  button.primary{border-color:var(--acc);color:var(--acc);font-weight:600}
+  button:disabled{opacity:.45;cursor:default}
+  .icombos{display:flex;gap:4px;align-items:center}
+  .icombo{padding:2px 8px;border:1px solid var(--line);border-radius:7px;font-size:11px;cursor:pointer;background:var(--panel2);user-select:none}
+  .icombo.on{border-color:var(--acc);color:var(--acc)}
+  .filters{padding:8px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:7px;background:var(--panel)}
+  .frow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .frow .lbl{color:var(--tx2);font-size:12px;min-width:56px}
+  .chip{padding:3px 12px;border:1px solid var(--line);border-radius:14px;cursor:pointer;font-size:12px;user-select:none;background:var(--panel2)}
+  .chip.on{color:#111;font-weight:600}
+  .chip.on[data-v=eating]{background:var(--eating);border-color:var(--eating)}
+  .chip.on[data-v=drinking]{background:var(--drinking);border-color:var(--drinking)}
+  .chip.on[data-v=active]{background:var(--active);border-color:var(--active)}
+  .chip.on[data-v=resting]{background:var(--resting);border-color:var(--resting)}
+  .chip.on[data-v=unknown]{background:var(--unknown);border-color:var(--unknown)}
+  .chip.on[data-v=grooming]{background:var(--grooming);border-color:var(--grooming)}
+  .chip.on[data-v=others]{background:var(--others);border-color:var(--others)}
+  .chip.on[data-v=defecating]{background:var(--defecating);border-color:var(--defecating)}
+  .chip.on[data-v=stand]{background:var(--stand);border-color:var(--stand)}
+  .chip.on[data-v=none]{background:#777;border-color:#777}
+  .combo{display:flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:12px;background:var(--panel2)}
+  .combo.on{border-color:var(--acc);color:var(--acc)}
+  select{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px}
+  input[type=range]{padding:0;width:140px;accent-color:var(--acc)}
+  .main{flex:1;display:flex;min-height:0}
+  .list{width:430px;border-right:1px solid var(--line);overflow-y:auto;padding:8px}
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:8px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px}
+  .card:hover{border-color:var(--acc)}
+  .card.sel{border-color:var(--acc);background:var(--panel2)}
+  .card img{width:96px;height:60px;object-fit:cover;border-radius:6px;background:#000;flex-shrink:0}
+.card .thumb{width:96px;height:60px;border-radius:6px;background:repeating-linear-gradient(45deg,#20202a,#20202a 6px,#26262f 6px,#26262f 12px);flex-shrink:0}
+.pager{display:flex;align-items:center;gap:8px;padding:10px 4px;color:var(--tx2);font-size:12px}
+.pager button{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:13px}
+.pager button:disabled{opacity:.35;cursor:default}
+.pager input{width:64px;background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-size:12px}
+  .card .info{flex:1;min-width:0}
+  .card .nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .meta{color:var(--tx2);font-size:11px;display:flex;gap:8px;margin:2px 0 5px;align-items:center;flex-wrap:wrap}
+  .badge{padding:0 7px;border-radius:9px;font-size:10px;background:var(--panel2)}
+  .badge.st-pending{background:#3a3a44;color:#b9b9c4}
+  .badge.st-ready{background:#1e3a5c;color:#8ec2f7}
+  .badge.st-approved{background:#1d4028;color:#7fd0a0}
+  .csq{font-size:10px;padding:1px 5px;border-radius:4px;color:#111;font-weight:600;white-space:nowrap;overflow:hidden}
+  .detail{flex:1;overflow-y:auto;padding:14px 18px}
+  .detail h2{font-size:14px;font-weight:600;margin-bottom:4px;word-break:break-all}
+  .detail .sub{color:var(--tx2);font-size:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .detail video{width:100%;max-height:42vh;border-radius:10px;background:#000}
+  .tl{margin-top:12px}
+  .tl .tl-name{font-size:12px;color:var(--tx2);margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  .tl .band{position:relative;height:26px;border-radius:6px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}
+  .tl .segro{position:absolute;top:0;height:100%}
+  .tl .segro span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(0,0,0,.75);font-weight:600;overflow:hidden;white-space:nowrap}
+  #etl{position:relative;height:44px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);margin-top:4px;user-select:none}
+  #etl .seg{position:absolute;top:5px;bottom:5px;border-radius:6px;cursor:pointer;overflow:hidden;font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;min-width:5px}
+  #etl .seg.selected{outline:2px solid #fff;outline-offset:1px;z-index:3}
+  #etl .handle{position:absolute;top:0;bottom:0;width:9px;cursor:ew-resize}
+  #etl .handle.l{left:0}#etl .handle.r{right:0}
+  #etl .seg:hover .handle::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:46%;background:rgba(0,0,0,.5);border-radius:1px}
+  #ecursor{position:absolute;top:-2px;bottom:-2px;width:2px;background:#fff;pointer-events:none;box-shadow:0 0 8px rgba(255,255,255,.7);z-index:4}
+  #legend{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .lchip{display:inline-flex;align-items:center;padding:3px 12px;border-radius:14px;font-size:12px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);cursor:pointer;opacity:.62}
+  .lchip:hover{opacity:.9}
+  .lchip.active{opacity:1;outline:2px solid #fff;outline-offset:1px}
+  .lchip.gap{background:#666;cursor:default;opacity:.8}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}
+  th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left}
+  th{color:var(--tx2);font-weight:400;position:sticky;top:0;background:var(--bg)}
+  .dom{display:inline-block;padding:0 8px;border-radius:8px;color:#111;font-weight:600;font-size:11px}
+  .empty{color:var(--tx2);text-align:center;padding:40px 0}
+  .sw{width:10px;height:10px;border-radius:3px;display:inline-block;vertical-align:-1px;margin-right:4px}
+  #editStatus{font-size:12px;color:var(--acc)}
+  .statscard{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .statscard .row{display:grid;grid-template-columns:78px 1fr 70px;gap:12px;align-items:center;margin:6px 0}
+  .statscard .track{position:relative;height:12px;background:var(--panel2);border-radius:6px;overflow:hidden}
+  .statscard .fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;min-width:2px}
+  .statscard .head{font-size:11px;color:var(--tx2);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+  kbd{font-family:Consolas,monospace;font-size:11px;background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>VLM 審閱</h1>
+  <div class="species-choice" role="group" aria-label="物種">
+    <label><input type="radio" name="species" value="rabbit" checked>兔子</label>
+    <label><input type="radio" name="species" value="pet">貓 / 狗</label>
+  </div>
+  <input type="text" id="dirInput" placeholder="貼上目錄路徑（Enter 只載入），選好後點「開始推理」" style="width:320px">
+  <button id="browseBtn" title="彈出系統資料夾選擇框（瀏覽器拿不到完整路徑時自動按資料夾名反查）">瀏覽…</button>
+  <span class="stat" id="dirStat">未開啟目錄</span>
+  <span id="inferCtl" style="display:flex;gap:8px;align-items:center">
+    <span class="icombos" id="inferCombos"></span>
+    <label class="hint" style="cursor:pointer" title="推理畫面：預設全畫面；勾選後按 YOLO bbox 外擴 1.25 裁剪，漏檢幀回退全畫面"><input type="checkbox" id="cropChk"> crop</label>
+    <button id="inferBtn">開始推理</button>
+  </span>
+  <span class="stat" id="inferStat"></span>
+  <span style="flex:1"></span>
+  <button id="finishBtn">Finish</button>
+  <a id="exportBtn" href="/api/export" style="font-size:12px;color:var(--acc)">匯出 jsonl</a>
+  <span class="stat" id="applyStat" title="Finish 後自動裁剪進度"></span>
+</header>
+<div class="filters">
+  <div class="frow">
+    <span class="lbl">標籤</span>
+    <span class="chip" data-f="labels" data-v="eating"><span class="sw" style="background:var(--eating)"></span>eating</span>
+    <span class="chip" data-f="labels" data-v="drinking"><span class="sw" style="background:var(--drinking)"></span>drinking</span>
+    <span class="chip" data-f="labels" data-v="active"><span class="sw" style="background:var(--active)"></span>active</span>
+    <span class="chip" data-f="labels" data-v="resting"><span class="sw" style="background:var(--resting)"></span>resting</span>
+    <span class="chip" data-f="labels" data-v="unknown"><span class="sw" style="background:var(--unknown)"></span>unknown</span>
+    <span class="chip" data-f="labels" data-v="grooming" title="僅匹配人工段標籤（VLM 不產生此標籤）"><span class="sw" style="background:var(--grooming)"></span>grooming</span>
+    <span class="chip" data-f="labels" data-v="others" title="僅匹配人工段標籤（VLM 不產生此標籤）"><span class="sw" style="background:var(--others)"></span>others</span>
+    <span class="chip" data-f="labels" data-v="defecating" title="僅匹配人工段標籤（VLM 不產生此標籤）"><span class="sw" style="background:var(--defecating)"></span>defecating</span>
+    <span class="chip" data-f="labels" data-v="stand" title="僅匹配人工段標籤（VLM 不產生此標籤）"><span class="sw" style="background:var(--stand)"></span>stand</span>
+    <span class="chip" data-f="labels" data-v="none"><span class="sw" style="background:#777"></span>none（<span id="noneName">無兔</span>）</span>
+    <span class="hint">不選 = 不限；多選 = 判詞或人工段落在所選集內</span>
+  </div>
+  <div class="frow">
+    <span class="lbl">組合</span>
+    <span id="filterCombos" style="display:flex;gap:4px;flex-wrap:wrap"></span>
+    <span class="lbl" style="min-width:auto;margin-left:10px">同時命中</span>
+    <select id="minN"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+    <span class="lbl" style="min-width:auto;margin-left:10px">最小佔比</span>
+    <input type="range" id="minShare" min="0" max="90" step="5" value="0">
+    <span class="hint" id="shareVal">關</span>
+    <span class="hint" id="matchHint"></span>
+  </div>
+  <div class="frow">
+    <span class="lbl">狀態</span>
+    <select id="fStatus"><option value="all">全部</option><option value="pending">待推理</option><option value="ready">有結果</option><option value="approved">已批准</option></select>
+    <span class="lbl" style="min-width:auto;margin-left:10px">來源</span>
+    <select id="fSource"><option value="all">全部</option></select>
+    <span class="lbl" style="min-width:auto;margin-left:10px">搜尋</span>
+    <input type="text" id="fSearch" placeholder="檔名…" style="width:150px">
+    <span class="lbl" style="min-width:auto;margin-left:10px">排序</span>
+    <select id="sort"><option value="n">命中數 ↓</option><option value="share">判詞佔比 ↓</option><option value="dur">時長 ↓</option><option value="name">檔名</option></select>
+  </div>
+</div>
+<div class="main">
+  <div class="list" id="list"></div>
+  <div class="detail" id="detail"><div class="empty">← 貼上路徑或點「瀏覽…」選目錄，點左側影片開始審閱</div></div>
+</div>
+<script>
+const LC={eating:"var(--eating)",drinking:"var(--drinking)",active:"var(--active)",resting:"var(--resting)",unknown:"var(--unknown)",none:"#77777f",
+  grooming:"var(--grooming)",others:"var(--others)",defecating:"var(--defecating)",stand:"var(--stand)"};
+const LCN={eating:"eating",drinking:"drinking",active:"active",resting:"resting",unknown:"unknown",none:"none",
+  grooming:"grooming",others:"others",defecating:"defecating",stand:"stand"};
+const CLASSES=["eating","drinking","active","resting","unknown","grooming","others","defecating","stand"];
+// manual-only labels: never produced by VLM inference, human annotators only
+const MANUAL_LABELS=["grooming","others","defecating","stand"];
+let COMBO_ORDER=["8b-v3","8b-old","32b-v3","32b-old"];
+const COMBO_NAMES={"8b-v3":"8B · v3","8b-old":"8B · 舊","32b-v3":"32B · v3","32b-old":"32B · 舊",
+  "8b-v1":"8B · v1","8b-v2":"8B · v2","32b-v1":"32B · v1","32b-v2":"32B · v2"};
+let SPECIES="rabbit";
+let speciesPending=Promise.resolve();
+const ST_TXT={pending:"待推理",ready:"有結果",approved:"已批准"};
+let DATA=null, curVid=null, DOC=null;
+let sel={labels:new Set(),combos:new Set(COMBO_ORDER)};
+let shownList=[];
+let page=1;
+const PAGE_SIZE=100;
+let E={sel:-1,undo:[],snap:null,curLabel:null,drag:null,anchor:null,scrub:false};
+
+const $=id=>document.getElementById(id);
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function fmtDur(s){s=Math.round(s||0);return s>=60?`${Math.floor(s/60)}m${s%60}s`:`${s}s`}
+async function api(path,opts){
+  const r=await fetch(path,opts);
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error||r.statusText);
+  return d;
+}
+
+/* ---------------- filters (7/8 semantics kept) ---------------- */
+function comboHit(c){
+  if(!c||!c.dominant) return 0;
+  if(sel.labels.size&&!sel.labels.has(c.dominant)) return 0;
+  const ms=+$("minShare").value/100;
+  if(ms>0&&(c.dominant_share||0)<ms) return 0;
+  return 1;
+}
+function nHits(v){let n=0;for(const cb of sel.combos)n+=comboHit(v.combos[cb]);return n+manualHit(v)}
+function manualHit(v){
+  if(!sel.labels.size) return 0;
+  const labs=v.seg_labels||[];
+  for(const l of MANUAL_LABELS) if(sel.labels.has(l)&&labs.includes(l)) return 1;
+  return 0;
+}
+function filtered(){
+  const st=$("fStatus").value,src=$("fSource").value,kw=$("fSearch").value.trim().toLowerCase();
+  const minN=+$("minN").value,sort=$("sort").value;
+  let rows=DATA.videos.map(v=>({v,n:nHits(v)}));
+  rows=rows.filter(r=>{
+    const v=r.v;
+    if(src!=="all"&&v.source!==src) return false;
+    if(kw&&!v.rel_path.toLowerCase().includes(kw)) return false;
+    if(st==="pending") return v.status==="pending";
+    if(v.status==="pending") return false;
+    if(st!=="all"&&v.status!==st) return false;
+    const avail=[...sel.combos].filter(cb=>v.combos[cb]).length;
+    if(avail===0) return false;
+    return r.n>=Math.min(minN,avail);
+  });
+  if(sort==="n") rows.sort((a,b)=>b.n-a.n||(b.v.duration||0)-(a.v.duration||0));
+  if(sort==="share") rows.sort((a,b)=>{
+    const sa=Math.max(...[...sel.combos].map(cb=>a.v.combos[cb]?.dominant_share||0));
+    const sb=Math.max(...[...sel.combos].map(cb=>b.v.combos[cb]?.dominant_share||0));
+    return sb-sa;});
+  if(sort==="dur") rows.sort((a,b)=>(b.v.duration||0)-(a.v.duration||0));
+  if(sort==="name") rows.sort((a,b)=>a.v.rel_path.localeCompare(b.v.rel_path));
+  return rows;
+}
+
+/* ---------------- list ---------------- */
+function renderList(){
+  if(!DATA) return;
+  const rows=filtered(), minN=+$("minN").value;
+  const pend=DATA.videos.filter(v=>v.status==="pending").length;
+  $("dirStat").innerHTML=`共 <b>${DATA.n_videos}</b> 條 · 命中 <b>${rows.length}</b>`+(pend?` · 待推理 <b>${pend}</b>`:"");
+  $("matchHint").textContent=`規則：勾選組合 ≥ ${Math.min(minN,sel.combos.size)} 個判詞命中；人工段標籤（${MANUAL_LABELS.join("/")}）命中另計 1`;
+  shownList=rows.map(r=>r.v.vid);
+  const totalPages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));
+  if(page>totalPages) page=totalPages;
+  const rowsPage=rows.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  const el=$("list");
+  if(!rows.length){
+    el.innerHTML=`<div class="empty">${pend?`有 ${pend} 條待推理影片：<br>把狀態切到「待推理」查看，或點「開始推理」`:"當前篩選無命中"}</div>`;
+    return;
+  }
+  const cards=rowsPage.map(r=>{
+    const v=r.v;
+    const sq=COMBO_ORDER.map(cb=>{
+      const c=v.combos[cb];
+      if(!c) return `<div class="csq" style="background:#2a2a32;color:var(--tx2)">— 無結果</div>`;
+      const hit=comboHit(c);
+      const bg=hit?LC[c.dominant]:"#2a2a32";
+      const fg=hit?"#111":"var(--tx2)";
+      return `<div class="csq" style="background:${bg};color:${fg};${hit?"":"opacity:.55"}">${COMBO_NAMES[cb]} ${LCN[c.dominant]} ${(c.dominant_share*100).toFixed(0)}%</div>`;
+    }).join("");
+    const thumb=(v.status==="pending")
+      ? `<div class="thumb"></div>`
+      : `<img loading="lazy" src="/api/frame?vid=${v.vid}&w=w000" onerror="this.style.visibility='hidden'">`;
+    return `<div class="card${v.vid===curVid?" sel":""}" data-vid="${v.vid}">
+      ${thumb}
+      <div class="info">
+        <div class="nm" title="${esc(v.rel_path)}">${esc(v.name)}</div>
+        <div class="meta">
+          <span class="badge st-${v.status}">${ST_TXT[v.status]}</span>
+          <span>${fmtDur(v.duration)}</span>
+          ${v.n_windows?`<span>${v.n_windows}窗</span>`:""}
+          ${v.status!=="pending"?`<span style="color:var(--acc);font-weight:600">命中 ${r.n}</span><span>${v.n_segments}段</span>`:""}
+          ${MANUAL_LABELS.filter(l=>sel.labels.has(l)&&(v.seg_labels||[]).includes(l))
+            .map(l=>`<span class="csq" style="background:${LC[l]};color:#111">${l}</span>`).join("")}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">${sq}</div>
+      </div></div>`;
+  }).join("");
+  const pager=`<div class="pager">
+    <button data-pg="first" ${page<=1?"disabled":""}>«</button>
+    <button data-pg="prev" ${page<=1?"disabled":""}>‹</button>
+    <span>第 <input id="pgJump" type="number" min="1" max="${totalPages}" value="${page}"> / ${totalPages} 頁</span>
+    <button data-pg="next" ${page>=totalPages?"disabled":""}>›</button>
+    <button data-pg="last" ${page>=totalPages?"disabled":""}>»</button>
+    <span class="hint">每頁 ${PAGE_SIZE} 條</span>
+  </div>`;
+  el.innerHTML=cards+pager;
+  el.querySelectorAll(".card").forEach(c=>c.onclick=()=>showDetail(c.dataset.vid));
+  el.querySelectorAll(".pager button").forEach(b=>b.onclick=()=>{
+    const pg=b.dataset.pg;
+    if(pg==="first")page=1; else if(pg==="prev")page=Math.max(1,page-1);
+    else if(pg==="next")page=Math.min(totalPages,page+1); else page=totalPages;
+    renderList(); $("list").scrollTop=0;
+  });
+  const jump=$("pgJump");
+  if(jump) jump.onchange=()=>{
+    page=Math.max(1,Math.min(totalPages,+jump.value||1));
+    renderList(); $("list").scrollTop=0;
+  };
+}
+
+/* ---------------- detail ---------------- */
+async function showDetail(vid,reveal=true){
+  curVid=vid;
+  const idx=shownList.indexOf(vid);
+  if(reveal&&idx>=0) page=Math.floor(idx/PAGE_SIZE)+1;
+  E={sel:-1,undo:[],snap:null,curLabel:null,drag:null,anchor:null,scrub:false};
+  renderList();
+  const el=$("detail");
+  el.innerHTML='<div class="empty">載入中…</div>';
+  try{ DOC=await api("/api/doc?vid="+vid); }
+  catch(e){ DOC=null; }
+  renderDetail();
+}
+function comboBandsHtml(doc){
+  return COMBO_ORDER.map(cb=>{
+    const c=(doc.combos||{})[cb];
+    if(!c||!c.windows||!c.windows.length)
+      return `<div class="tl"><div class="tl-name"><span>${COMBO_NAMES[cb]}</span><span>無結果</span></div><div class="band"></div></div>`;
+    const dur=doc.duration||1;
+    const segs=c.windows.map(r=>{
+      const x0=(r.start/dur*100).toFixed(2), x1=(Math.min(r.end,dur)/dur*100).toFixed(2);
+      const col=LC[r.label]||"#555";
+      const op=r.label==="none"?0.9:Math.max(.35,Math.min(1,.4+(r.confidence||0)*.6));
+      const txt=r.end-r.start>2.5?LCN[r.label]:"";
+      return `<div class="segro" style="left:${x0}%;width:${Math.max(0.15,x1-x0)}%;background:${col};opacity:${op}" data-t="${r.start}" title="${COMBO_NAMES[cb]} · ${r.w} · ${r.label} ${(r.confidence||0).toFixed(2)} · gate=${r.gate}"><span>${txt}</span></div>`;
+    }).join("");
+    const dist=c.dist?Object.entries(c.dist).map(([k,n])=>`${k} ${n}`).join(" · "):"";
+    return `<div class="tl"><div class="tl-name"><span><span class="sw" style="background:${LC[c.dominant]}"></span>${COMBO_NAMES[cb]} — 主導 <b style="color:${LC[c.dominant]}">${LCN[c.dominant]}</b> ${(c.dominant_share*100).toFixed(0)}%</span><span class="hint">${dist}</span></div><div class="band">${segs}</div></div>`;
+  }).join("");
+}
+function renderDetail(){
+  const el=$("detail");
+  if(!curVid){el.innerHTML='<div class="empty">← 選擇左側影片查看詳情</div>';return}
+  const v=DATA&&DATA.videos.find(x=>x.vid===curVid);
+  if(!DOC){
+    el.innerHTML=`<h2>${esc(v?v.name:curVid)}</h2>
+      <div class="sub"><span class="badge st-pending">待推理</span>${v?`<span>${fmtDur(v.duration)}</span>`:""}</div>
+      <video id="pv" controls preload="metadata" src="/api/video?vid=${curVid}"></video>
+      <div class="empty">該影片尚未推理：點「開始推理」；<br>推理完成後這裡會出現可編輯的預標註段時間軸。</div>`;
+    return;
+  }
+  const doc=DOC;
+  const st=doc.approved?"approved":"ready";
+  const meta=[fmtDur(doc.duration),`${doc.n_gate_none} 窗無${SPECIES==="rabbit"?"兔":"貓狗"}(YOLO)`,
+    `${Object.keys(doc.combos||{}).length} 組合`,esc(doc.rel_path)].join(" · ");
+  const baseCb=COMBO_ORDER.find(cb=>(doc.combos||{})[cb]&&(doc.combos[cb].windows||[]).length);
+  const plan=baseCb?doc.combos[baseCb].windows:[];
+  const rowsHtml=plan.map((r0,i)=>{
+    const cells=COMBO_ORDER.map(cb=>{
+      const c=(doc.combos||{})[cb];
+      const r=c&&c.windows&&c.windows[i];
+      if(!r) return "<td>—</td>";
+      return `<td><span class="dom" style="background:${LC[r.label]}">${LCN[r.label]}</span> ${(r.confidence||0).toFixed(2)}</td>`;
+    }).join("");
+    return `<tr class="wrow" data-t="${r0.start}" style="cursor:pointer"><td>${r0.w}</td><td>${r0.start.toFixed(1)}–${r0.end.toFixed(1)}s</td><td>${r0.gate==="vlm"?"✓":"✗"}</td>${cells}</tr>`;
+  }).join("");
+  el.innerHTML=`<h2>${esc(doc.rel_path)}</h2>
+    <div class="sub">
+      <span class="badge st-${st}">${ST_TXT[st]}</span><span>${meta}</span>
+      <span id="editStatus"></span>
+      <span style="flex:1"></span>
+      <button id="resynBtn" title="用當前組合的視窗結果按多數票重新合成預標註段（覆蓋現有段）">重新合成</button>
+      <button id="approveBtn" class="primary" title="Enter">批准此影片</button>
+    </div>
+    <video id="pv" controls preload="metadata" src="/api/video?vid=${curVid}"></video>
+    <div class="tl">
+      <div class="tl-name">
+        <span>合成段（可編輯 · <kbd>拖兩端</kbd>修剪 · <kbd>空白拖</kbd>新增 · <kbd>Del</kbd>刪除 · <kbd>Ctrl+Z</kbd>復原）</span>
+        <span id="segCount"></span>
+      </div>
+      <div id="etl"><div id="ecursor" style="left:0"></div></div>
+      <div id="legend"></div>
+    </div>
+    ${comboBandsHtml(doc)}
+    <table><thead><tr><th>視窗</th><th>時間</th><th style="width:46px">兔?</th>${COMBO_ORDER.map(cb=>`<th>${COMBO_NAMES[cb]}</th>`).join("")}</tr></thead><tbody>${rowsHtml}</tbody></table>
+    <div class="statscard" id="statsCard"></div>`;
+  renderETL(); renderLegend(); renderStatsCard(); bindDetail();
+}
+function renderStatsCard(){
+  const el=$("statsCard"); if(!el||!DATA||!DATA.stats) return;
+  const s=DATA.stats;
+  const classes=s.class_names&&s.class_names.length?s.class_names:Object.keys(s.labels);
+  let totalMin=0,maxMin=0;
+  const rows=classes.map(c=>{const m=((s.labels[c]||{}).duration||0)/60;totalMin+=m;maxMin=Math.max(maxMin,m);return{c,m}});
+  el.innerHTML=`<div class="head">已批准資料集 · ${s.approved_videos}/${s.total_videos} 影片 · ${totalMin.toFixed(1)} 分鐘</div>`+
+    (classes.length?rows.map(({c,m})=>`<div class="row"><span>${c}</span><div class="track"><div class="fill" style="width:${maxMin>0?m/maxMin*100:0}%;background:${LC[c]}"></div></div><span style="color:var(--tx2);font-size:11px;text-align:right">${m.toFixed(1)} min</span></div>`).join("")
+    :'<div class="hint">還沒有已批准的影片。</div>');
+}
+
+/* ---------------- editor (2b interaction set) ---------------- */
+function timeAtX(clientX){
+  const rect=$("etl").getBoundingClientRect();
+  return Math.max(0,Math.min(DOC.duration||1,(clientX-rect.left)/rect.width*(DOC.duration||1)));
+}
+function snapNow(){return JSON.stringify(DOC.segments)}
+function pushUndo(s){E.undo.push(s);if(E.undo.length>50)E.undo.shift()}
+function colorOf(label){return LC[label]||"#e63946"}
+async function undo(){
+  if(!DOC)return;
+  if(!E.undo.length){$("editStatus").textContent="沒有可復原的操作";return}
+  DOC.segments=JSON.parse(E.undo.pop());
+  E.sel=-1;
+  await saveDoc("save");
+  $("editStatus").textContent="已復原（批准已清除，請重新批准）";
+}
+function renderETL(){
+  const tl=$("etl"); if(!tl||!DOC) return;
+  tl.innerHTML="<div id='ecursor' style='left:0'></div>";
+  const D=DOC.duration||1;
+  DOC.segments.forEach((s,i)=>{
+    const el=document.createElement("div");
+    el.className="seg"+(i===E.sel?" selected":"");
+    el.style.left=(s.start/D*100)+"%";
+    el.style.width=Math.max(0,(s.end-s.start)/D*100)+"%";
+    el.style.background=colorOf(s.label);
+    el.title=`${s.label} ${s.start.toFixed(1)}–${s.end.toFixed(1)}s conf=${(s.confidence||0).toFixed(2)}`;
+    el.textContent=`${s.label} ${(s.confidence??0).toFixed(2)}`;
+    el.innerHTML+="<div class='handle l'></div><div class='handle r'></div>";
+    el.onmousedown=e=>{
+      if(e.target.classList.contains("handle")){
+        E.snap=snapNow();
+        E.drag={idx:i,side:e.target.classList.contains("l")?"l":"r"};
+      }else{
+        E.sel=i; E.curLabel=s.label;
+        const pv=$("pv"); if(pv)pv.currentTime=s.start;
+        renderETL(); markChips();
+      }
+      e.preventDefault();
+    };
+    tl.appendChild(el);
+  });
+  $("segCount").textContent=`${DOC.segments.length} 段`;
+}
+function bindDetail(){
+  const tl=$("etl"), pv=$("pv");
+  tl.onmousedown=e=>{
+    if(e.target!==tl)return;
+    E.anchor={x:e.clientX,t:timeAtX(e.clientX)};
+    e.preventDefault();
+  };
+  window.onmousemove=e=>{
+    if(E.scrub){pv.currentTime=timeAtX(e.clientX);return}
+    if(E.anchor&&!E.drag&&Math.abs(e.clientX-E.anchor.x)>4){
+      E.snap=snapNow();
+      DOC.segments.push({start:E.anchor.t,end:E.anchor.t,
+        label:E.curLabel||CLASSES[0]||"unknown",
+        confidence:1.0,source:"human"});
+      E.sel=DOC.segments.length-1;
+      E.drag={idx:E.sel,side:"create",anchor:E.anchor.t};
+      E.anchor=null;
+    }
+    if(!E.drag)return;
+    const t=timeAtX(e.clientX);
+    const s=DOC.segments[E.drag.idx];
+    if(E.drag.side==="create"){s.start=Math.min(E.drag.anchor,t);s.end=Math.max(E.drag.anchor,t)}
+    else if(E.drag.side==="l")s.start=Math.min(t,s.end-0.2);
+    else s.end=Math.max(t,s.start+0.2);
+    s.source="human";
+    pv.currentTime=t;
+    renderETL();
+  };
+  window.onmouseup=async()=>{
+    if(E.scrub){E.scrub=false;return}
+    if(E.anchor){
+      pv.currentTime=E.anchor.t;
+      E.anchor=null;
+      return;
+    }
+    if(!E.drag)return;
+    const wasCreate=E.drag.side==="create";
+    E.drag=null;
+    if(wasCreate){
+      const s=DOC.segments[DOC.segments.length-1];
+      if(s.end-s.start<0.2){DOC.segments.pop();E.sel=-1;E.snap=null;renderETL();return}
+    }
+    if(E.snap){pushUndo(E.snap);E.snap=null}
+    await saveDoc("save");
+  };
+  pv.ontimeupdate=()=>{
+    const D=(DOC&&DOC.duration)||1;
+    const cur=$("ecursor");
+    if(cur)cur.style.left=(pv.currentTime/D*100)+"%";
+  };
+  const el=$("detail");
+  el.querySelectorAll(".segro,.wrow").forEach(s=>s.onclick=()=>{
+    const p=$("pv");
+    if(p){p.currentTime=+s.dataset.t+0.05;p.play().catch(()=>{})}
+  });
+  $("approveBtn").onclick=()=>approveVideo();
+  $("resynBtn").onclick=()=>resynthesize();
+  window.onresize=()=>{if(DOC&&$("etl"))renderETL()};
+}
+function renderLegend(){
+  const lg=$("legend"); lg.innerHTML="";
+  if(!E.curLabel||!CLASSES.includes(E.curLabel))E.curLabel=CLASSES[0];
+  for(const c of CLASSES){
+    const chip=document.createElement("span");
+    chip.className="lchip";
+    chip.style.background=colorOf(c);
+    chip.dataset.label=c;
+    chip.textContent=c;
+    chip.onclick=()=>pickLabel(c);
+    lg.appendChild(chip);
+  }
+  const gap=document.createElement("span");
+  gap.className="lchip gap";gap.textContent=`空隙 = 無段（無${SPECIES==="rabbit"?"兔":"貓狗"} / 投票不達標）`;
+  lg.appendChild(gap);
+  markChips();
+}
+function markChips(){
+  for(const chip of document.querySelectorAll("#legend .lchip"))
+    if(chip.dataset.label)chip.classList.toggle("active",chip.dataset.label===E.curLabel);
+}
+async function pickLabel(c){
+  E.curLabel=c; markChips();
+  if(E.sel>=0&&DOC&&DOC.segments[E.sel]){
+    pushUndo(snapNow());
+    DOC.segments[E.sel].label=c;
+    DOC.segments[E.sel].source="human";
+    await saveDoc("save");
+  }
+}
+async function deleteSelected(){
+  if(E.sel<0||!DOC)return;
+  pushUndo(snapNow());
+  DOC.segments.splice(E.sel,1);E.sel=-1;
+  await saveDoc("save");
+}
+async function saveDoc(action){
+  const payload={vid:curVid,action};
+  if(action==="save")payload.segments=DOC.segments;
+  try{
+    DOC=await api("/api/doc",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  }catch(e){$("editStatus").textContent="儲存失敗: "+e.message;return}
+  $("editStatus").textContent=action==="approve"?"已批准 ✅":"已儲存（批准已清除，請重新批准）";
+  renderETL();
+  const badge=document.querySelector("#detail .badge");
+  if(badge){badge.className=`badge st-${DOC.approved?"approved":"ready"}`;badge.textContent=ST_TXT[DOC.approved?"approved":"ready"]}
+  loadList();
+}
+function approveVideo(){
+  if(!DOC)return;
+  pushUndo(snapNow());
+  saveDoc("approve");
+}
+async function resynthesize(){
+  if(!DOC)return;
+  if(!confirm("用當前組合的視窗結果重新合成預標註段？\n將覆蓋現有段（包括人工修改），並清除批准。"))return;
+  try{
+    DOC=await api("/api/resynthesize",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({vid:curVid})});
+    E.sel=-1;E.undo=[];
+    renderETL();
+    $("editStatus").textContent="已重新合成（請檢查後重新批准）";
+    loadList();
+  }catch(e){$("editStatus").textContent="合成失敗: "+e.message}
+}
+
+/* ---------------- keyboard ---------------- */
+window.onkeydown=e=>{
+  const tag=(e.target.tagName||"").toUpperCase();
+  if(tag==="INPUT"||tag==="SELECT"||tag==="TEXTAREA")return;
+  if(e.code==="Space"){e.preventDefault();const pv=$("pv");if(pv&&pv.src)pv.paused?pv.play():pv.pause()}
+  else if(e.ctrlKey&&e.key.toLowerCase()==="z"){e.preventDefault();undo()}
+  else if(e.key==="Enter"){e.preventDefault();approveVideo()}
+  else if(e.key==="Backspace"||e.key==="Delete"){e.preventDefault();deleteSelected()}
+  else if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+    e.preventDefault();
+    if(!shownList.length)return;
+    const cur=shownList.indexOf(curVid);
+    let next;
+    if(e.key==="ArrowDown")next=cur<0?0:Math.min(cur+1,shownList.length-1);
+    else next=cur<0?0:Math.max(cur-1,0);
+    if(shownList[next]&&shownList[next]!==curVid)showDetail(shownList[next]);
+  }
+};
+
+/* ---------------- top bar: open / infer / finish ---------------- */
+function renderStaticCombos(){
+  $("inferCombos").innerHTML=COMBO_ORDER.map(cb=>
+    `<span class="icombo on" data-v="${cb}">${COMBO_NAMES[cb]}</span>`).join("");
+  $("filterCombos").innerHTML=COMBO_ORDER.map(cb=>
+    `<span class="combo on" data-f="combos" data-v="${cb}">${COMBO_NAMES[cb]}</span>`).join("");
+}
+const DEFAULT_SCENE="tolo";  // 新目錄自動套用；已存來源的目錄沿用其 context.json
+function selectedScene(){return (DATA&&DATA.scene)||DEFAULT_SCENE}
+function applySpecies(species){
+  SPECIES=species;
+  document.querySelector(`input[name="species"][value="${species}"]`).checked=true;
+  COMBO_ORDER=species==="rabbit"?["8b-v3","8b-old","32b-v3","32b-old"]:["8b-v1","8b-v2","32b-v1","32b-v2"];
+  sel.combos=new Set(COMBO_ORDER);
+  $("noneName").textContent=species==="rabbit"?"無兔":"無貓狗";
+  renderStaticCombos();
+}
+function changeSpecies(radio){
+  if(!radio.checked||radio.value===SPECIES)return;
+  speciesPending=(async()=>{
+    try{
+      await api("/api/species",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({species:radio.value})});
+      applySpecies(radio.value);
+      if(DATA)$("dirInput").value="";
+      DATA=null;curVid=null;DOC=null;page=1;
+      $("list").innerHTML="";
+      $("detail").innerHTML='<div class="empty">選擇影片目錄開始審閱</div>';
+      $("dirStat").textContent="選擇影片目錄開始審閱";
+    }catch(e){
+      document.querySelector(`input[name="species"][value="${SPECIES}"]`).checked=true;
+      alert("切換物種失敗: "+e.message);
+    }
+  })();
+}
+function openPayload(dir){return JSON.stringify({dir,scene:"",species:SPECIES})}
+async function openDirApi(dir){
+  // scene 留空：已存來源的目錄沿用其 context.json；全新目錄自動套 DEFAULT_SCENE
+  let d=await api("/api/open",{method:"POST",
+    headers:{"Content-Type":"application/json"},body:openPayload(dir)});
+  if(!d.scene){
+    d=await api("/api/open",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({dir:d.target,scene:DEFAULT_SCENE,species:SPECIES})});
+  }
+  return d;
+}
+async function openDir(dir){
+  await speciesPending;
+  $("dirStat").textContent="掃描中…（首次開啟需探測影片時長，可能稍慢）";
+  try{
+    const d=await openDirApi(dir);
+    $("dirInput").value=d.target;
+    $("dirStat").textContent=`已開啟：${d.n_videos} 影片 · ${d.n_docs} 有結果 · ${d.n_approved} 已批准`;
+    await loadList();
+  }catch(e){$("dirStat").textContent="開啟失敗: "+e.message}
+}
+$("browseBtn").onclick=async()=>{
+  if(!window.showDirectoryPicker){
+    $("dirStat").textContent="此瀏覽器不支援彈出選擇，請貼上完整路徑（Enter 只載入）";
+    return;
+  }
+  let handle;
+  try{ handle=await window.showDirectoryPicker(); }
+  catch(e){ return; }  // user cancelled
+  let d;
+  try{
+    d=await api("/api/resolve-folder",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name:handle.name})});
+  }catch(e){$("dirStat").textContent="反查失敗: "+e.message;return}
+  const hits=d.hits||[];
+  if(hits.length===1){
+    $("dirInput").value=hits[0];
+    $("dirStat").textContent="目錄已選定，點「開始推理」載入並推理";
+  }else if(hits.length>1){
+    $("dirStat").innerHTML="多個同名目錄，點擊選擇："+
+      hits.map((h,i)=>`<a href="javascript:void(0)" data-i="${i}" style="color:var(--acc);margin:0 6px">${esc(h)}</a>`).join("");
+    for(const a of $("dirStat").querySelectorAll("a"))
+      a.onclick=()=>{$("dirInput").value=hits[+a.dataset.i];$("dirStat").textContent="目錄已選定，點「開始推理」載入並推理"};
+  }else{
+    $("dirInput").value=handle.name;
+    $("dirStat").textContent="常用位置未找到該資料夾，請貼上完整路徑（Enter 只載入）";
+  }
+};
+$("dirInput").onkeydown=e=>{if(e.key==="Enter"){const d=$("dirInput").value.trim();if(d)openDir(d)}};
+let inferTimer=null;
+function pollInfer(){
+  if(inferTimer)return;
+  inferTimer=setInterval(async()=>{
+    let s;
+    try{s=await (await fetch("/api/infer/status")).json()}catch(e){return}
+    $("inferStat").textContent=s.running?`推理中 ${s.done}/${s.total} · ${s.current||""}`:"";
+    if(!s.running){
+      clearInterval(inferTimer);inferTimer=null;
+      if(s.error){$("inferStat").textContent="推理出錯: "+s.error;return}
+      if(s.done>0||s.total>0){loadList();if(curVid)showDetail(curVid,false)}
+    }
+  },2000);
+}
+$("inferBtn").onclick=async()=>{
+  await speciesPending;
+  const dir=$("dirInput").value.trim();
+  if(!dir&&(!DATA||!DATA.target)){alert("先貼上目錄路徑，或點「瀏覽…」選擇資料夾");return}
+  if(dir&&(!DATA||DATA.target!==dir||DATA.species!==SPECIES)){
+    $("dirStat").textContent="掃描中…（首次開啟需探測影片時長，可能稍慢）";
+    try{
+      const d=await openDirApi(dir);
+      $("dirStat").textContent=`已開啟：${d.n_videos} 影片 · ${d.n_docs} 有結果 · ${d.n_approved} 已批准`;
+      await loadList();
+    }catch(e){$("dirStat").textContent="開啟失敗: "+e.message;return}
+  }
+  const combos=[...document.querySelectorAll("#inferCombos .icombo.on")].map(c=>c.dataset.v);
+  if(!combos.length){alert("至少勾選一個組合");return}
+  try{
+    const d=await api("/api/infer/start",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({combos,crop:$("cropChk").checked})});
+    $("inferStat").textContent=d.message;
+    pollInfer();
+  }catch(e){alert("無法開始推理: "+e.message)}
+};
+$("finishBtn").onclick=async()=>{
+  if(!DATA||DATA.species!==SPECIES||!DATA.scene){alert("請先開啟影片目錄");return}
+  if(!confirm("Finish 審閱？將寫入 review_state.json 快照，並自動把已批准片段裁剪到 dataset/raw_videos/<品種>/<機構>-record/sorted-<日期>/<標籤>/。"))return;
+  try{
+    const s=await api("/api/finish",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:"{}"});
+    $("dirStat").textContent=`Finish 完成：${s.stats.approved_videos} 已批准 / ${s.stats.total_videos} 影片`;
+    const ap=s.apply||{};
+    if(ap.ok&&ap.status&&ap.status.total>0){
+      $("applyStat").textContent=`裁剪中 0/${ap.status.total}`;pollApply();
+    }else if(ap.ok){
+      $("applyStat").textContent="無已批准片段，未裁剪";
+    }else{
+      $("applyStat").textContent="裁剪未啟動: "+ap.message;
+    }
+  }catch(e){alert("Finish 失敗: "+e.message)}
+  $("finishBtn").blur();
+};
+let applyTimer=null;
+function pollApply(){
+  if(applyTimer)return;
+  $("finishBtn").disabled=true;
+  applyTimer=setInterval(async()=>{
+    let s;
+    try{s=await (await fetch("/api/apply/status")).json()}catch(e){return}
+    if(s.running){$("applyStat").textContent=`裁剪中 ${s.done}/${s.total} · ${s.current||""}`;return}
+    clearInterval(applyTimer);applyTimer=null;
+    $("finishBtn").disabled=false;
+    if(s.error){$("applyStat").textContent="裁剪失敗: "+s.error;return}
+    const labs=Object.entries(s.by_label||{}).map(([k,v])=>`${k} ${v}`).join(" · ");
+    $("applyStat").textContent=`裁剪完成 ${s.written} 段 → ${s.out_dir||""}（${labs}）`+
+      (s.warnings&&s.warnings.length?` · ${s.warnings.length} 警告`:"");
+    loadList();
+  },2000);
+}
+$("exportBtn").onclick=e=>{
+  if(!DATA||DATA.species!==SPECIES||!DATA.scene){
+    e.preventDefault();alert("請先開啟影片目錄");
+  }
+};
+
+/* ---------------- filter bindings ---------------- */
+document.body.onclick=e=>{
+  const chip=e.target.closest(".chip,.combo,#inferCombos .icombo");
+  if(!chip)return;
+  if(chip.classList.contains("icombo")){chip.classList.toggle("on");return}
+  const f=chip.dataset.f,val=chip.dataset.v,set=sel[f];
+  set.has(val)?set.delete(val):set.add(val);
+  chip.classList.toggle("on");
+  if(f==="combos"&&set.size===0){set.add(val);chip.classList.add("on")}
+  page=1; renderList();
+};
+$("minN").onchange=()=>{page=1;renderList()};
+$("minShare").oninput=()=>{
+  const v=+$("minShare").value;
+  $("shareVal").textContent=v===0?"關":`≥ ${v}%`;
+  page=1; renderList();
+};
+$("fStatus").onchange=()=>{page=1;renderList()};
+$("fSource").onchange=()=>{page=1;renderList()};
+$("fSearch").oninput=()=>{page=1;renderList()};
+$("sort").onchange=()=>{page=1;renderList()};
+
+/* ---------------- boot ---------------- */
+function renderSourceOptions(){
+  if(!DATA)return;
+  const srcs=[...new Set(DATA.videos.map(v=>v.source))].sort();
+  const cur=$("fSource").value;
+  $("fSource").innerHTML='<option value="all">全部</option>'+
+    srcs.map(s=>`<option value="${esc(s)}"${s===cur?" selected":""}>${esc(s)}</option>`).join("");
+}
+async function loadList(){
+  try{
+    DATA=await api("/api/data");
+  }catch(e){
+    return;
+  }
+  renderSourceOptions();
+  renderList();
+  renderStatsCard();
+}
+(async function boot(){
+  for(const radio of document.querySelectorAll('input[name="species"]')){
+    radio.onchange=()=>changeSpecies(radio);
+  }
+  renderStaticCombos();
+  try{
+    const st=await api("/api/state");
+    applySpecies(st.species||"rabbit");
+    if(st.no_infer){
+      $("inferCtl").style.display="none";
+    }
+    if(st.target||st.suggested_dir)$("dirInput").value=st.target||st.suggested_dir;
+    if(st.infer&&st.infer.running)pollInfer();
+  }catch(e){}
+  await loadList();
+  if(DATA&&DATA.videos.length)showDetail(DATA.videos[0].vid);
+})();
+</script>
+</body>
+</html>
