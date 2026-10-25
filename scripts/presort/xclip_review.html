@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>X-CLIP vs 2a 对比</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1e1f22; color:#d7d8da; font:13px/1.6 "Segoe UI",sans-serif; display:flex; height:100vh; }
+  .side { width:230px; background:#26272b; border-right:1px solid #333; overflow-y:auto; flex-shrink:0; }
+  .side h3 { font-size:13px; font-weight:500; padding:10px 12px 6px; color:#9aa0a6; }
+  .vitem { padding:7px 12px; cursor:pointer; border-left:2px solid transparent; }
+  .vitem:hover { background:#2e2f34; }
+  .vitem.on { background:#33363c; border-left-color:#4f8cff; }
+  .vitem .rid { font-weight:500; }
+  .vitem .ag { font-size:11px; color:#9aa0a6; }
+  .main { flex:1; padding:14px 18px; overflow-y:auto; }
+  .head { display:flex; align-items:baseline; gap:14px; margin-bottom:10px; flex-wrap:wrap; }
+  .head h2 { font-size:15px; font-weight:500; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:#2e2f34; color:#9aa0a6; }
+  .agree { font-size:13px; font-weight:500; }
+  video { width:100%; max-width:860px; background:#000; border-radius:8px; }
+  .tl-label { font-size:11px; color:#9aa0a6; margin:10px 0 3px; }
+  .tl { position:relative; height:26px; background:#26272b; border-radius:6px; overflow:hidden; max-width:860px; }
+  .tl .seg { position:absolute; top:0; height:100%; opacity:.92; }
+  .tl.hoverline { position:absolute; top:0; width:2px; background:#fff; opacity:.55; height:100%; display:none; pointer-events:none; }
+  .probbox { max-width:860px; margin-top:12px; background:#26272b; border-radius:8px; padding:10px 14px; }
+  .probbox h4 { font-size:12px; font-weight:500; color:#9aa0a6; margin-bottom:6px; }
+  .prow { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .prow .nm { width:70px; font-size:11px; color:#c4c7cb; }
+  .prow .bar { flex:1; height:12px; background:#1e1f22; border-radius:4px; overflow:hidden; }
+  .prow .fill { height:100%; }
+  .prow .v { width:52px; text-align:right; font-size:11px; color:#9aa0a6; }
+  .legend { display:flex; gap:14px; margin:8px 0 2px; font-size:11px; color:#9aa0a6; flex-wrap:wrap; }
+  .legend span i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; }
+</style>
+</head>
+<body>
+<div class="side"><h3>视频（点选）</h3><div id="vlist"></div></div>
+<div class="main">
+  <div class="head">
+    <h2 id="vname">—</h2>
+    <span class="badge">X-CLIP 源
+      <select id="xcsrc" style="background:#1e1f22;color:#d7d8da;border:1px solid #444;border-radius:4px;font-size:11px">
+        <option value=".xclip-large">.xclip-large (large-patch14)</option>
+        <option value=".xclip-p16">.xclip-p16 (base-patch16)</option>
+        <option value=".xclip">.xclip (base-patch32)</option>
+      </select>
+    </span>
+    <span class="agree" id="overall"></span>
+    <span class="agree" id="vagree"></span>
+  </div>
+  <video id="player" controls preload="metadata"></video>
+  <div class="legend">
+    <span><i style="background:#7f77dd"></i>resting 睡觉</span>
+    <span><i style="background:#639922"></i>active 跑动</span>
+    <span><i style="background:#ba7517"></i>eating 进食</span>
+    <span><i style="background:#1d9e75"></i>drinking 喝水</span>
+    <span><i style="background:#555"></i>none/其他</span>
+  </div>
+  <div class="tl-label">X-CLIP 零样本（上）</div>
+  <div class="tl" id="tl_xc"><div class="hoverline"></div></div>
+  <div class="tl-label">2a dashboard 模型+FSM+规则（下）</div>
+  <div class="tl" id="tl_ap"><div class="hoverline"></div></div>
+  <div class="probbox">
+    <h4 id="ptitle">点击时间轴任意时刻查看 X-CLIP 五类概率</h4>
+    <div id="probs"></div>
+  </div>
+</div>
+<script>
+const COLORS = { resting:"#7f77dd", active:"#639922", eating:"#ba7517", drinking:"#1d9e75", none:"#555" };
+const LIMIT = 10, LEVEL = "0.9";
+let DATA=null, CUR=null;
+
+function segsToSpans(segs, gaps, dur){
+  const out=[];
+  for(const s of segs) out.push({s:s.start, e:s.end, l:s.label});
+  for(const g of gaps) out.push({s:g[0], e:g[1], l:"none"});
+  out.sort((a,b)=>a.s-b.s);
+  const cov=new Array(Math.ceil(dur*10)).fill(null);
+  for(const o of out) for(let i=Math.floor(o.s*10); i<Math.min(cov.length, Math.ceil(o.e*10)); i++) if(cov[i]===null) cov[i]=o.l;
+  const spans=[]; let cur=null;
+  cov.forEach((l,i)=>{ const t=i/10;
+    if(cur && cur.l===l) cur.e=t+0.1; else { cur={s:t,e:t+0.1,l}; spans.push(cur); } });
+  return spans.filter(sp=>sp.l);
+}
+function drawTimeline(el, spans, dur, onClick){
+  el.querySelectorAll(".seg").forEach(n=>n.remove());
+  for(const sp of spans){
+    const d=document.createElement("div");
+    d.className="seg"; d.style.left=(sp.s/dur*100)+"%"; d.style.width=((sp.e-sp.s)/dur*100)+"%";
+    d.style.background=COLORS[sp.l]||"#555";
+    el.appendChild(d);
+  }
+}
+function showProbs(t){
+  if(!CUR) return;
+  const wins=CUR.xc_windows.filter(w=>t>=w.start-0.001 && t<w.end+0.001);
+  const box=document.getElementById("probs");
+  const title=document.getElementById("ptitle");
+  if(!wins.length){ title.textContent=`t=${t.toFixed(1)}s：无窗口覆盖`; box.innerHTML=""; return; }
+  const w=wins[wins.length-1];
+  title.textContent=`t=${t.toFixed(1)}s（窗口 ${w.start.toFixed(1)}-${w.end.toFixed(1)}s）X-CLIP 概率`;
+  const entries=Object.entries(w.probs).sort((a,b)=>b[1]-a[1]);
+  box.innerHTML=entries.map(([k,v])=>`<div class="prow"><div class="nm">${k}</div>
+    <div class="bar"><div class="fill" style="width:${v*100}%;background:${COLORS[k]||"#555"}"></div></div>
+    <div class="v">${(v*100).toFixed(1)}%</div></div>`).join("");
+}
+function pick(i){
+  CUR=DATA.videos[i];
+  document.querySelectorAll(".vitem").forEach((n,j)=>n.classList.toggle("on", j===i));
+  document.getElementById("vname").textContent=CUR.rel;
+  document.getElementById("vagree").textContent="本条判定分布 "+labelDist(CUR, false);
+  const p=document.getElementById("player");
+  p.src="/video/"+CUR.rel;
+  const xcSpans=segsToSpans(CUR.xc_segments, CUR.xc_gaps, CUR.duration);
+  const apSpans=segsToSpans(CUR.ap_segments, CUR.ap_gaps, CUR.duration);
+  drawTimeline(document.getElementById("tl_xc"), xcSpans, CUR.duration);
+  drawTimeline(document.getElementById("tl_ap"), apSpans, CUR.duration);
+  ["tl_xc","tl_ap"].forEach(id=>{
+    const el=document.getElementById(id);
+    el.onmousemove=e=>{ const r=el.getBoundingClientRect();
+      const hl=el.querySelector(".hoverline");
+      hl.style.display="block"; hl.style.left=(e.clientX-r.left)+"px"; };
+    el.onmouseleave=e=>{ el.querySelector(".hoverline").style.display="none"; };
+    el.onclick=e=>{ const r=el.getBoundingClientRect();
+      const t=(e.clientX-r.left)/r.width*CUR.duration;
+      p.currentTime=t; if(p.paused) p.play(); showProbs(t); };
+  });
+  p.ontimeupdate=()=>{ showProbs(p.currentTime); };
+  showProbs(0);
+}
+function labelDist(videos, all){
+  const dist = {};
+  const src = all ? videos : [videos];
+  src.forEach(v => (v.xc_windows||[]).forEach(w => {
+    const probs = w.probs || {};
+    const lab = Object.keys(probs).reduce((a,b)=>probs[b]>probs[a]?b:a, "-");
+    dist[lab] = (dist[lab]||0) + (w.end - w.start);
+  }));
+  const tot = Object.values(dist).reduce((a,b)=>a+b,0) || 1;
+  return Object.entries(dist).sort((a,b)=>b[1]-a[1])
+    .map(([k,v])=>`${k} ${(v/tot*100).toFixed(0)}%`).join(" · ");
+}
+async function load(xc){
+  const r=await fetch(`/api/data?limit=${LIMIT}&level=${LEVEL}&xc=${xc}`);
+  DATA=await r.json();
+  document.getElementById("overall").textContent="X-CLIP 判定分布 "+labelDist(DATA.videos, true)+"（全部）";
+  const vl=document.getElementById("vlist"); vl.innerHTML="";
+  DATA.videos.forEach((v,i)=>{
+    const d=document.createElement("div");
+    d.className="vitem"+(i===0?" on":"");
+    d.innerHTML=`<div class="rid">${v.rel.split("/")[0]}</div><div class="ag">${v.duration.toFixed(1)}s · ${labelDist(v, false)}</div>`;
+    d.onclick=()=>pick(i);
+    vl.appendChild(d);
+  });
+  if(DATA.videos.length) pick(0);
+}
+document.getElementById("xcsrc").onchange=e=>load(e.target.value);
+load(".xclip-large");
+</script>
+</body>
+</html>
