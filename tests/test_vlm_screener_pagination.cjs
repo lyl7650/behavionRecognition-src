@@ -11,9 +11,28 @@ const script = html.match(/<script>([\s\S]*?)<\/script>/)[1]
 
 function setup() {
   const elements = {};
-  const speciesRadios = {rabbit: {checked: true}, pet: {checked: false}};
+  const classList = () => {
+    const set = new Set();
+    return {
+      toggle(c, force) {
+        if (force === undefined) force = !set.has(c);
+        if (force) set.add(c); else set.delete(c);
+        return force;
+      },
+      add: c => set.add(c),
+      remove: c => set.delete(c),
+      contains: c => set.has(c),
+    };
+  };
+  // 物種分段按鈕：applySpecies/markSpecies 用 dataset.sp + classList 標記選中
+  const speciesButtons = [
+    {dataset: {sp: 'rabbit'}, on: true, classList: classList()},
+    {dataset: {sp: 'pet'}, on: false, classList: classList()},
+  ];
   const get = id => elements[id] ||= {
     value: '', innerHTML: '', textContent: '', scrollTop: 0,
+    style: {}, dataset: {}, hidden: false, disabled: false,
+    readOnly: false, title: '', size: 0, classList: classList(),
     querySelectorAll(selector) {
       if (selector !== '.pager button') return [];
       this.buttons = [...this.innerHTML.matchAll(/<button data-pg="([^"]+)"/g)]
@@ -23,14 +42,15 @@ function setup() {
   };
   Object.assign(get('minN'), {value: '1'});
   Object.assign(get('minShare'), {value: '0'});
-  Object.assign(get('fStatus'), {value: 'all'});
   Object.assign(get('fSource'), {value: 'all'});
   Object.assign(get('fSearch'), {value: ''});
   Object.assign(get('sort'), {value: 'name'});
   const context = vm.createContext({
     document: {
       getElementById: get, body: {},
-      querySelector: selector => speciesRadios[selector.match(/value="(rabbit|pet)"/)[1]],
+      addEventListener() {},
+      querySelectorAll: selector =>
+        selector === '#speciesSeg button' ? speciesButtons : [],
     }, window: {},
     fetch: () => new Promise(() => {}),
   });
@@ -43,20 +63,22 @@ function setup() {
   }));
   context.videos = videos;
   vm.runInContext('DATA={videos,n_videos:videos.length};curVid="v000";renderList()', context);
-  return {context, elements, get, speciesRadios};
+  return {context, elements, get, speciesButtons};
 }
 
 test('species selection changes combos and open request', () => {
-  const {context, get, speciesRadios} = setup();
+  const {context, get, speciesButtons} = setup();
   vm.runInContext('applySpecies("pet")', context);
-  assert.equal(speciesRadios.pet.checked, true);
+  assert.equal(speciesButtons.find(b => b.dataset.sp === 'pet').classList.contains('on'), true);
+  assert.equal(speciesButtons.find(b => b.dataset.sp === 'rabbit').classList.contains('on'), false);
   assert.match(get('inferCombos').innerHTML, /8b-v1/);
   assert.doesNotMatch(get('inferCombos').innerHTML, /8b-v3/);
   assert.equal(get('noneName').textContent, '無貓狗');
-  get('sceneSelect').value = 'Site_A';
+  get('sceneInput').value = 'Site_A';
   assert.equal(JSON.parse(vm.runInContext('openPayload("C:/videos")', context)).species, 'pet');
   vm.runInContext('applySpecies("rabbit")', context);
   assert.match(get('inferCombos').innerHTML, /8b-v3/);
+  assert.equal(get('noneName').textContent, '無兔');
 });
 
 test('manual pagination is not overridden by the selected video', () => {
