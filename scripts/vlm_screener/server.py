@@ -31,7 +31,9 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -71,56 +73,46 @@ def _source_of(rel_path):
     return norm.split("/", 1)[0] if "/" in norm else "(root)"
 
 
-def _has_video_direct(d):
-    """Directory directly contains a video file (keeps resolve hits precise)."""
-    try:
-        for name in os.listdir(d):
-            if name.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm")):
-                return True
-    except OSError:
-        return False
-    return False
+_picker_lock = threading.Lock()
 
 
-def resolve_folder(name):
-    """Map a folder NAME (from the browser picker, which cannot see absolute
-    paths) to full path(s). Search roots: ancestors of last-opened dir
-    (parent / grandparent / great-grandparent) + project root, walk depth 3,
-    prefer directories that directly contain video files."""
-    name = (name or "").strip().strip('"')
-    if not name or "/" in name or "\\" in name or ":" in name:
-        return []
-    roots, seen = [], set()
-    try:
-        with open(LAST_DIR_FILE, encoding="utf-8") as f:
-            last = f.read().strip()
-    except OSError:
-        last = ""
-    p = last
-    for _ in range(3):
-        p = os.path.dirname(p) if p else ""
-        if p and os.path.isdir(p) and p not in seen:
-            seen.add(p)
-            roots.append(p)
-        if not p:
-            break
-    if PROJECT_ROOT not in seen and os.path.isdir(PROJECT_ROOT):
-        roots.append(PROJECT_ROOT)
-    direct, indirect = [], []
-    for r in roots:
-        for root, dirs, _files in os.walk(r):
-            depth = os.path.relpath(root, r).count(os.sep)
-            if depth >= 3:
-                dirs[:] = []
-                continue
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
-            for d in dirs:
-                if d.lower() == name.lower():
-                    full = os.path.join(root, d)
-                    if full not in direct and full not in indirect:
-                        (direct if _has_video_direct(full)
-                         else indirect).append(full)
-    return direct + indirect
+def pick_folder():
+    """Native folder dialog on the machine running this server.
+
+    The browser picker never exposes an absolute path (only a folder name), so
+    the OS dialog has to be raised from this process. Returns "" when the user
+    cancels or the platform helper is unavailable.
+    """
+    if os.name == "nt":
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "$d=New-Object System.Windows.Forms.FolderBrowserDialog;"
+            "$d.Description='選擇影片目錄';"
+            "$d.ShowNewFolderButton=$false;"
+            "if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)"
+            "{Write-Output $d.SelectedPath}"
+        )
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-STA", "-Command", script],
+            capture_output=True, text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    elif sys.platform == "darwin":
+        proc = subprocess.run(
+            ["osascript", "-e",
+             'POSIX path of (choose folder with prompt "Select a video folder")'],
+            capture_output=True, text=True)
+    else:
+        proc = subprocess.run(["zenity", "--file-selection", "--directory"],
+                              capture_output=True, text=True)
+    if proc.returncode != 0:
+        return ""
+    path = proc.stdout.strip()
+    if os.name == "nt":
+        if len(path) > 3:
+            path = path.rstrip("\\/")
+    elif len(path) > 1:
+        path = path.rstrip("/")
+    return path
 
 
 def open_target(target, scene="", species=None):
@@ -346,9 +338,18 @@ class Handler(BaseHTTPRequestHandler):
             except (RuntimeError, ValueError) as e:
                 self._json({"error": str(e)}, 409)
             return
-        if u.path == "/api/resolve-folder":
-            hits = resolve_folder(payload.get("name", ""))
-            self._json({"hits": hits})
+        if u.path == "/api/pick-folder":
+            if not _picker_lock.acquire(blocking=False):
+                self._json({"error": "folder dialog already open"}, 409)
+                return
+            try:
+                path = pick_folder()
+            except OSError as exc:
+                self._json({"error": f"cannot open folder dialog: {exc}"}, 500)
+                return
+            finally:
+                _picker_lock.release()
+            self._json({"path": path})
             return
         target = _state["target"]
         if not target:

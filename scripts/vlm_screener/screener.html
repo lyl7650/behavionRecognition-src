@@ -647,32 +647,16 @@ async function openDir(dir){
   }catch(e){$("dirStat").textContent="開啟失敗: "+e.message}
 }
 $("browseBtn").onclick=async()=>{
-  if(!window.showDirectoryPicker){
-    $("dirStat").textContent="此瀏覽器不支援彈出選擇，請貼上完整路徑（Enter 只載入）";
-    return;
-  }
-  let handle;
-  try{ handle=await window.showDirectoryPicker(); }
-  catch(e){ return; }  // user cancelled
+  // 瀏覽器的選擇框拿不到絕對路徑，改由本機服務彈系統對話框，直接返回路徑
+  $("dirStat").textContent="已彈出系統選擇框，請在對話框中選擇資料夾…";
   let d;
   try{
-    d=await api("/api/resolve-folder",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({name:handle.name})});
-  }catch(e){$("dirStat").textContent="反查失敗: "+e.message;return}
-  const hits=d.hits||[];
-  if(hits.length===1){
-    $("dirInput").value=hits[0];
-    $("dirStat").textContent="目錄已選定，點「開始推理」載入並推理";
-  }else if(hits.length>1){
-    $("dirStat").innerHTML="多個同名目錄，點擊選擇："+
-      hits.map((h,i)=>`<a href="javascript:void(0)" data-i="${i}" style="color:var(--acc);margin:0 6px">${esc(h)}</a>`).join("");
-    for(const a of $("dirStat").querySelectorAll("a"))
-      a.onclick=()=>{$("dirInput").value=hits[+a.dataset.i];$("dirStat").textContent="目錄已選定，點「開始推理」載入並推理"};
-  }else{
-    $("dirInput").value=handle.name;
-    $("dirStat").textContent="常用位置未找到該資料夾，請貼上完整路徑（Enter 只載入）";
-  }
+    d=await api("/api/pick-folder",{method:"POST",
+      headers:{"Content-Type":"application/json"},body:"{}"});
+  }catch(e){$("dirStat").textContent="彈出選擇框失敗: "+e.message;return}
+  if(!d.path){$("dirStat").textContent="未選擇目錄（若沒看到系統對話框，請直接貼上路徑）";return}
+  $("dirInput").value=d.path;
+  await openDir(d.path);
 };
 $("dirInput").onkeydown=e=>{if(e.key==="Enter"){const d=$("dirInput").value.trim();if(d)openDir(d)}};
 $("sceneInput").onchange=async()=>{
