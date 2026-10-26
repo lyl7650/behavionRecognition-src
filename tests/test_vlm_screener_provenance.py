@@ -44,11 +44,14 @@ def test_legacy_rabbit_requires_scene_and_cannot_be_opened_as_pet(tmp_path):
         store.export_jsonl(target)
 
 
-def test_pet_prompt_is_checked_before_gpu_precheck(tmp_path, monkeypatch):
+def test_empty_prompt_is_checked_before_gpu_precheck(tmp_path, monkeypatch):
+    from scripts.vlm_screener import prompts
+
     monkeypatch.setattr(store, "SCENES_PATH", str(tmp_path / "scenes.json"))
     store.ensure_context(str(tmp_path), "pet", "Site_A")
     monkeypatch.setattr(review_infer, "precheck", lambda:
                         pytest.fail("GPU check must not run for an empty prompt"))
+    monkeypatch.setitem(prompts.PET_PROMPTS, "v1", "")
     review_infer._state["running"] = False
     ok, message = review_infer.start(str(tmp_path),
                                      [COMBOS_BY_SPECIES["pet"][0]["combo"]], False)
@@ -60,7 +63,9 @@ def test_pet_prompt_is_checked_before_gpu_precheck(tmp_path, monkeypatch):
 def test_pet_uses_pet_detector_and_its_own_prompt(monkeypatch):
     from scripts.vlm_screener import prompts
 
-    monkeypatch.setitem(prompts.PET_PROMPTS, "v1", "pet prompt for test")
+    assert "defecating" in prompts.TABLES["pet"]["labels"]
+    assert "Defecating" in prompts.TABLES["pet"]["words"]
+    assert "defecating" not in prompts.TABLES["rabbit"]["labels"]
     monkeypatch.setattr(store, "require_context", lambda target:
                         {"species": "pet", "scene": "Site_A"})
     video = {"vid": "v1", "rel_path": "v1.mp4", "path": "v1.mp4"}
@@ -88,7 +93,7 @@ def test_pet_uses_pet_detector_and_its_own_prompt(monkeypatch):
     assert review_infer.run_model_for_batch("target", [cfg], False,
                                             ["v1"], "1:8b") == 0
     assert weights == [review_infer.PET_YOLO_WEIGHTS]
-    assert saved[0]["combos"]["8b-v1"]["prompt_version"] == "screener-pet-5class-v1"
+    assert saved[0]["combos"]["8b-v1"]["prompt_version"] == "screener-pet-6class-v1"
 
 
 def test_species_selection_clears_open_directory(monkeypatch, tmp_path):

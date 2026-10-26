@@ -110,6 +110,8 @@
     <label><input type="radio" name="species" value="rabbit" checked>兔子</label>
     <label><input type="radio" name="species" value="pet">貓 / 狗</label>
   </div>
+  <input type="text" id="sceneInput" list="sceneList" placeholder="場地（如 tolo）" title="片段導出到 場地-record 目錄；已綁定的目錄不可改" style="width:120px">
+  <datalist id="sceneList"></datalist>
   <input type="text" id="dirInput" placeholder="貼上目錄路徑（Enter 只載入），選好後點「開始推理」" style="width:320px">
   <button id="browseBtn" title="彈出系統資料夾選擇框（瀏覽器拿不到完整路徑時自動按資料夾名反查）">瀏覽…</button>
   <span class="stat" id="dirStat">未開啟目錄</span>
@@ -587,14 +589,15 @@ function renderStaticCombos(){
   $("filterCombos").innerHTML=COMBO_ORDER.map(cb=>
     `<span class="combo on" data-f="combos" data-v="${cb}">${COMBO_NAMES[cb]}</span>`).join("");
 }
-const DEFAULT_SCENE="tolo";  // 新目錄自動套用；已存來源的目錄沿用其 context.json
-function selectedScene(){return (DATA&&DATA.scene)||DEFAULT_SCENE}
 function applySpecies(species){
   SPECIES=species;
   document.querySelector(`input[name="species"][value="${species}"]`).checked=true;
   COMBO_ORDER=species==="rabbit"?["8b-v3","8b-old","32b-v3","32b-old"]:["8b-v1","8b-v2","32b-v1","32b-v2"];
   sel.combos=new Set(COMBO_ORDER);
   $("noneName").textContent=species==="rabbit"?"無兔":"無貓狗";
+  $("sceneInput").value="";
+  $("sceneInput").disabled=false;
+  $("sceneInput").title="片段導出到 場地-record 目錄；純審閱可留空";
   renderStaticCombos();
 }
 function changeSpecies(radio){
@@ -615,15 +618,21 @@ function changeSpecies(radio){
     }
   })();
 }
-function openPayload(dir){return JSON.stringify({dir,scene:"",species:SPECIES})}
+function openPayload(dir){return JSON.stringify({dir,scene:$("sceneInput").value.trim(),species:SPECIES})}
 async function openDirApi(dir){
-  // scene 留空：已存來源的目錄沿用其 context.json；全新目錄自動套 DEFAULT_SCENE
-  let d=await api("/api/open",{method:"POST",
+  // 場地留空也能開：已有 context 的目錄沿用其值，全新目錄不寫（純審閱不需要場地，
+  // 推理/Finish 時後端 require_context 會要求）。已綁定的目錄不允許在頁面上改。
+  const d=await api("/api/open",{method:"POST",
     headers:{"Content-Type":"application/json"},body:openPayload(dir)});
-  if(!d.scene){
-    d=await api("/api/open",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({dir:d.target,scene:DEFAULT_SCENE,species:SPECIES})});
+  const v=$("sceneInput").value.trim();
+  if(d.scene){
+    $("sceneInput").value=d.scene;
+    $("sceneInput").disabled=true;
+    $("sceneInput").title="此目錄已綁定場地；要改請刪除 .vlm-screener/context.json";
+  }else{
+    $("sceneInput").value=v;
+    $("sceneInput").disabled=false;
+    $("sceneInput").title="片段導出到 場地-record 目錄；純審閱可留空";
   }
   return d;
 }
@@ -666,6 +675,11 @@ $("browseBtn").onclick=async()=>{
   }
 };
 $("dirInput").onkeydown=e=>{if(e.key==="Enter"){const d=$("dirInput").value.trim();if(d)openDir(d)}};
+$("sceneInput").onchange=async()=>{
+  // 已開目錄但還沒綁場地：填完直接綁到當前目錄，不用再點一次「開始推理」
+  if(!$("sceneInput").value.trim()||!DATA||DATA.scene)return;
+  await openDir(DATA.target);
+};
 let inferTimer=null;
 function pollInfer(){
   if(inferTimer)return;
@@ -692,6 +706,12 @@ $("inferBtn").onclick=async()=>{
       await loadList();
     }catch(e){$("dirStat").textContent="開啟失敗: "+e.message;return}
   }
+  if(DATA&&DATA.species===SPECIES&&!DATA.scene&&$("sceneInput").value.trim()){
+    await openDir(DATA.target);
+  }
+  if(!DATA||DATA.species!==SPECIES||!DATA.scene){
+    alert("請先填寫場地並綁定到當前目錄");return
+  }
   const combos=[...document.querySelectorAll("#inferCombos .icombo.on")].map(c=>c.dataset.v);
   if(!combos.length){alert("至少勾選一個組合");return}
   try{
@@ -703,7 +723,8 @@ $("inferBtn").onclick=async()=>{
   }catch(e){alert("無法開始推理: "+e.message)}
 };
 $("finishBtn").onclick=async()=>{
-  if(!DATA||DATA.species!==SPECIES||!DATA.scene){alert("請先開啟影片目錄");return}
+  if(!DATA||DATA.species!==SPECIES){alert("請先開啟影片目錄");return}
+  if(!DATA.scene){alert("請先填寫場地並綁定到當前目錄（片段要導出到 場地-record）");return}
   if(!confirm("Finish 審閱？將寫入 review_state.json 快照，並自動把已批准片段裁剪到 dataset/raw_videos/<品種>/<機構>-record/sorted-<日期>/<標籤>/。"))return;
   try{
     const s=await api("/api/finish",{method:"POST",
@@ -738,9 +759,10 @@ function pollApply(){
   },2000);
 }
 $("exportBtn").onclick=e=>{
-  if(!DATA||DATA.species!==SPECIES||!DATA.scene){
-    e.preventDefault();alert("請先開啟影片目錄");
+  if(!DATA||DATA.species!==SPECIES){
+    e.preventDefault();alert("請先開啟影片目錄");return
   }
+  if(!DATA.scene){e.preventDefault();alert("請先填寫場地並綁定到當前目錄")}
 };
 
 /* ---------------- filter bindings ---------------- */
@@ -791,6 +813,11 @@ async function loadList(){
   try{
     const st=await api("/api/state");
     applySpecies(st.species||"rabbit");
+    $("sceneList").innerHTML=(st.scenes||[]).map(s=>`<option value="${esc(s)}">`).join("");
+    if(st.scene){
+      $("sceneInput").value=st.scene;
+      $("sceneInput").disabled=true;
+    }
     if(st.no_infer){
       $("inferCtl").style.display="none";
     }

@@ -25,8 +25,8 @@ RESULTS_DIR = os.path.join(DATA_DIR, "results")
 PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
 
 from scripts.vlm_screener.prompts import (
-    COMBOS, LABELS, WORDS, MAX_NEW_TOKENS, PROMPTS, PROMPT_VERSION,
-    RETRY_SUFFIX, SCHEMA_VERSION, MODEL_KEYS)
+    COMBOS, MAX_NEW_TOKENS, PROMPTS, PROMPT_VERSION,
+    SCHEMA_VERSION, MODEL_KEYS, TABLES)
 
 
 def log(msg):
@@ -53,13 +53,14 @@ def log_vram(tag):
         log(f"vram[{tag}] query failed: {e}")
 
 
-def parse_answer(text):
+def parse_answer(text, table):
     """'<Word> {json...}' -> (label, self_conf). Label resolution: leading
     word first (drives the first-token conf), then JSON field, then any
-    allowed word in the text."""
+    allowed word in the text. `table` is prompts.TABLES[species]."""
+    labels, words = table["labels"], table["words"]
     label = None
     m = re.match(r"\s*([A-Za-z]+)", text)
-    if m and m.group(1).lower() in LABELS:
+    if m and m.group(1).lower() in labels:
         label = m.group(1).lower()
     self_conf = None
     s, e = text.find("{"), text.rfind("}")
@@ -68,7 +69,7 @@ def parse_answer(text):
             obj = json.loads(text[s:e + 1])
             if isinstance(obj, dict):
                 lab = str(obj.get("label", "")).strip().lower()
-                if lab in LABELS and label is None:
+                if lab in labels and label is None:
                     label = lab
                 c = obj.get("confidence")
                 if isinstance(c, (int, float)) and not isinstance(c, bool):
@@ -76,14 +77,14 @@ def parse_answer(text):
         except ValueError:
             pass
     if label is None:
-        for w in WORDS:
+        for w in words:
             if re.search(r"\b" + w + r"\b", text, re.IGNORECASE):
                 label = w.lower()
                 break
     return label, self_conf
 
 
-def load_model(model_dir, dtype):
+def load_model(model_dir, dtype, words):
     import torch
     from transformers import AutoProcessor
     try:
@@ -113,19 +114,19 @@ def load_model(model_dir, dtype):
     processor = AutoProcessor.from_pretrained(model_dir)
     tok = getattr(processor, "tokenizer", processor)
     cand_ids = []
-    for w in WORDS:
+    for w in words:
         ids = tok.encode(w, add_special_tokens=False)
         cand_ids.append(ids[0] if ids else None)
     use_logits_conf = (all(c is not None for c in cand_ids)
-                       and len(set(cand_ids)) == len(WORDS))
+                       and len(set(cand_ids)) == len(words))
     log(f"model {os.path.basename(model_dir)} ({dtype}) ready in "
-        f"{time.time() - t0:.0f}s; logits_conf={use_logits_conf} "
+        f"{time.time() - t0:.0f}s; words={words} logits_conf={use_logits_conf} "
         f"cand_ids={cand_ids}")
     return model, processor, cand_ids, use_logits_conf
 
 
 def classify(model, processor, cand_ids, use_logits_conf, pil_frames,
-             prompt, tag):
+             prompt, tag, table):
     import torch
     from PIL import Image
 
@@ -149,14 +150,14 @@ def classify(model, processor, cand_ids, use_logits_conf, pil_frames,
             logits = gen.scores[0][0].float()
             cand = torch.tensor(cand_ids, device=logits.device)
             plist = torch.softmax(logits[cand], dim=-1).cpu().tolist()
-            probs = {lab: round(v, 4) for lab, v in zip(LABELS, plist)}
+            probs = {lab: round(v, 4) for lab, v in zip(table["labels"], plist)}
         return text, probs
 
     last_err = None
-    for attempt, p in enumerate([prompt, prompt + RETRY_SUFFIX]):
+    for attempt, p in enumerate([prompt, prompt + table["retry_suffix"]]):
         try:
             text, probs = generate(p)
-            label, self_conf = parse_answer(text)
+            label, self_conf = parse_answer(text, table)
             if label is None:
                 last_err = f"unparsed: {text[:60]!r}"
                 continue
@@ -228,8 +229,9 @@ def run_combo(cfg, manifest, windows, gates):
         log(f"=== combo {combo}: all docs present, skip model load ===")
         return 0
     log_vram(combo)
+    table = TABLES["rabbit"]
     model, processor, cand_ids, use_logits_conf = load_model(
-        model_dir, cfg["dtype"])
+        model_dir, cfg["dtype"], table["words"])
 
     n_win, n_vlm, n_err = 0, 0, 0
     t_all = time.time()
@@ -239,7 +241,7 @@ def run_combo(cfg, manifest, windows, gates):
         vdir = os.path.join(DATA_DIR, "frames", vid)
         gvid = gates["windows"].get(vid, {})
         records, raw = [], []
-        dist = {l: 0 for l in LABELS}
+        dist = {l: 0 for l in table["labels"]}
         dist["none"] = 0
         wins = wv["windows"]
         for idx, win in enumerate(wins):
@@ -262,7 +264,7 @@ def run_combo(cfg, manifest, windows, gates):
                 else:
                     label, conf, probs, retried, perr = classify(
                         model, processor, cand_ids, use_logits_conf,
-                        frames, prompt, f"{vid}/{win['w']}")
+                        frames, prompt, f"{vid}/{win['w']}", table)
                     n_vlm += 1
                     ran_vlm = True
             raw.append((win["start"], end, label, conf))

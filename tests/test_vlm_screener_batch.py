@@ -89,10 +89,10 @@ def test_batch_reuses_model_and_resume_skips_completed_combos(monkeypatch):
         cuda=SimpleNamespace(is_available=lambda: False)))
     monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=lambda _: object()))
     loads = []
-    monkeypatch.setattr(infer, "load_model", lambda path, dtype:
+    monkeypatch.setattr(infer, "load_model", lambda path, dtype, words:
                         (loads.append((path, dtype)) or (object(), object(), None, False)))
     monkeypatch.setattr(infer, "classify", lambda model, processor, ids, logits,
-                        frames, prompt, name: (
+                        frames, prompt, name, table: (
                             ("eating" if prompt == infer.PROMPTS["v3"] else "active"),
                             0.8, None, False, False))
     progress = []

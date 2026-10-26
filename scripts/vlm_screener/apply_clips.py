@@ -45,6 +45,17 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 DATE_RE = re.compile(r"date=(\d{4}-\d{2}-\d{2})")
 MAX_WARNINGS = 50
 
+# Screener labels are verb forms; the training dirs use the class names from
+# pipeline_config.SPECIES (pet: eat/drink). Labels with no class dir in that
+# species (unknown, defecating) keep their own name so the clips stay visible
+# under the sorted dir instead of being dropped.
+LABEL_DIR_ALIASES = {"pet": {"eating": "eat", "drinking": "drink"}}
+
+
+def label_dir_name(species, label):
+    return LABEL_DIR_ALIASES.get(species, {}).get(label, label)
+
+
 _state = {"running": False, "target": None, "out_dir": None, "date": None,
           "done": 0, "total": 0, "current": None, "written": 0,
           "by_label": {}, "warnings": [], "error": None,
@@ -147,7 +158,7 @@ def _warn(state, msg):
         state["warnings"].append(f"... further warnings suppressed")
 
 
-def _worker(target, out_dir, cuts, tolerance):
+def _worker(target, out_dir, cuts, tolerance, species):
     try:
         for i, cut in enumerate(cuts):
             _state["current"] = cut["rel_path"]
@@ -161,7 +172,8 @@ def _worker(target, out_dir, cuts, tolerance):
                 _warn(_state, f"missing source video: {cut['rel_path']}")
                 continue
             name = clip_name(cut["rel_path"], cut["start"], cut["end"])
-            dst = os.path.join(out_dir, cut["label"], name)
+            dst = os.path.join(out_dir, label_dir_name(species, cut["label"]),
+                               name)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             cmd = build_ffmpeg_cmd(src, dst, cut["start"], cut["end"])
             proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -205,6 +217,7 @@ def start(target, tolerance=0.25):
         return False, "ffmpeg/ffprobe not found on PATH"
     try:
         out_dir, date, note = output_dir(target)
+        species = store.require_context(target)["species"]
     except ValueError as exc:
         return False, str(exc)
     cuts, _skipped = plan(target)
@@ -221,7 +234,8 @@ def start(target, tolerance=0.25):
         return True, "no approved segments; nothing to cut"
     log(f"start: {len(cuts)} clip(s) -> {out_dir} (date={date})")
     t = threading.Thread(target=_worker,
-                         args=(os.path.abspath(target), out_dir, cuts, tolerance),
+                         args=(os.path.abspath(target), out_dir, cuts,
+                               tolerance, species),
                          daemon=True)
     t.start()
     return True, f"{len(cuts)} clip(s) queued -> {out_dir}"

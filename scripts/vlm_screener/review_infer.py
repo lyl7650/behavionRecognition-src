@@ -24,14 +24,15 @@ import sys
 import threading
 import time
 
+from scripts.pipeline import pipeline_config as pc
 from scripts.vlm_screener import review_store as store
 from scripts.vlm_screener.prepare import (
     WINDOW_SEC, STRIDE_SEC, N_FRAMES, MAX_SIDE, JPG_QUALITY,
     window_ranges, sample_timestamps, YOLO_WEIGHTS)
 from scripts.vlm_screener.prompts import (
-    COMBOS, LABELS, PROMPTS, MODEL_KEYS, GATE_MIN_DET,
+    COMBOS, PROMPTS, MODEL_KEYS, GATE_MIN_DET,
     YOLO_CONF, SCHEMA_VERSION, COMBOS_BY_SPECIES, PROMPTS_BY_SPECIES,
-    VERSIONS_BY_SPECIES)
+    VERSIONS_BY_SPECIES, TABLES)
 from scripts.vlm_screener.run_combos import (
     load_model, classify, merge_segments)
 
@@ -178,16 +179,25 @@ def _ensure_frames(target, video, wv):
             os.replace(tmp, fp)
 
 
-def _ensure_gate(target, video, wv, gates_all, yolo):
+def _ensure_gate(target, video, wv, gates_all, yolo, classes):
+    """YOLO gate restricted to the species' detector classes.
+
+    `classes` is pipeline_config's target_classes (pet 1=cat/2=dog, rabbit 0).
+    Without it the co-trained non-pet class (index 0) opens the gate and its
+    larger bbox becomes the crop. Gates cached before the filter existed carry
+    no "classes" key and are recomputed.
+    """
     vid = video["vid"]
     gvid = gates_all.get(vid)
-    if gvid and all("boxes" in g for g in gvid.values()) \
+    if gvid and all("boxes" in g and g.get("classes") == classes
+                    for g in gvid.values()) \
             and len(gvid) == len(wv["windows"]):
         return gvid
     gvid = gvid or {}
     vdir = os.path.join(store.data_dir(target), "frames", vid)
     for win in wv["windows"]:
-        if win["w"] in gvid and "boxes" in gvid[win["w"]]:
+        if win["w"] in gvid and "boxes" in gvid[win["w"]] \
+                and gvid[win["w"]].get("classes") == classes:
             continue
         frames = []
         for k in range(N_FRAMES):
@@ -198,7 +208,7 @@ def _ensure_gate(target, video, wv, gates_all, yolo):
         if frames:
             try:
                 res = yolo.predict(frames, conf=YOLO_CONF, device="cpu",
-                                   verbose=False)
+                                   classes=classes, verbose=False)
                 for r in res:
                     if r.boxes is not None and len(r.boxes) > 0:
                         det += 1
@@ -213,7 +223,8 @@ def _ensure_gate(target, video, wv, gates_all, yolo):
                 boxes = [None] * len(frames)
         gvid[win["w"]] = {"det_frames": det,
                           "has_pet": bool(det >= GATE_MIN_DET),
-                          "boxes": boxes}
+                          "boxes": boxes,
+                          "classes": list(classes)}
     gates_all[vid] = gvid
     store.save_gates(target, gates_all)
     return gvid
@@ -366,6 +377,7 @@ def run_model_for_batch(target, cfgs, crop, batch_vids, job):
         raise ValueError(f"combos do not belong to {species}")
     prompts = PROMPTS_BY_SPECIES[species]
     versions = VERSIONS_BY_SPECIES[species]
+    table = TABLES[species]
     for cfg in cfgs:
         if not prompts[cfg["prompt_key"]]:
             raise ValueError(f"{species} prompt {cfg['prompt_key']} is not written yet")
@@ -392,11 +404,14 @@ def run_model_for_batch(target, cfgs, crop, batch_vids, job):
     win_all = store.load_windows(target)
     gates_all = store.load_gates(target)
     weights = YOLO_WEIGHTS if species == "rabbit" else PET_YOLO_WEIGHTS
-    log(f"batch {job}: species={species}, yolo={weights}")
+    gate_classes = list(pc.SPECIES[species]["target_classes"])
+    log(f"batch {job}: species={species}, yolo={weights}, "
+        f"gate_classes={gate_classes}")
     yolo = YOLO(weights)
     model_dir = os.path.join(PROJECT_ROOT, "models-vlm", MODEL_KEYS[model_key])
     log(f"=== batch {job}: {total} video-combo tasks (crop={crop}) ===")
-    model, processor, cand_ids, use_logits_conf = load_model(model_dir, dtype)
+    model, processor, cand_ids, use_logits_conf = load_model(
+        model_dir, dtype, table["words"])
     done = 0
     try:
         for cfg in cfgs:
@@ -411,9 +426,10 @@ def run_model_for_batch(target, cfgs, crop, batch_vids, job):
                 vid = video["vid"]
                 wv = _ensure_windows(target, video, win_all)
                 _ensure_frames(target, video, wv)
-                gvid = _ensure_gate(target, video, wv, gates_all, yolo)
+                gvid = _ensure_gate(target, video, wv, gates_all, yolo,
+                                    gate_classes)
                 records = []
-                dist = {l: 0 for l in LABELS}
+                dist = {l: 0 for l in table["labels"]}
                 dist["none"] = 0
                 wins = wv["windows"]
                 for idx, win in enumerate(wins):
@@ -434,7 +450,7 @@ def run_model_for_batch(target, cfgs, crop, batch_vids, job):
                             label, conf, probs, retried, perr = classify(
                                 model, processor, cand_ids,
                                 use_logits_conf, frames, prompt,
-                                f"{vid}/{win['w']}")
+                                f"{vid}/{win['w']}", table)
                             ran_vlm = True
                     records.append({
                         "w": win["w"], "start": win["start"], "end": end,

@@ -25,13 +25,26 @@ from auto_presort.review_server import (
     VIDEO_EXTS, _probe_video_codec, prepare_browser_video_overrides)
 
 STORE_DIRNAME = ".vlm-screener"
-# VLM inference only ever produces VLM_CLASS_NAMES (prompts.LABELS); the
-# screener never asks the model about the MANUAL_CLASS_NAMES. The four manual
-# labels exist solely for human annotators in the page editor, and flow
-# through save / stats / export / apply like any other segment label.
+# VLM inference only ever produces VLM_CLASS_NAMES; the screener never asks
+# the model about the MANUAL_CLASS_NAMES. The manual labels exist solely for
+# human annotators in the page editor, and flow through save / stats / export
+# / apply like any other segment label. "defecating" is both: rabbit prompts
+# cannot emit it (manual only), pet prompts can (see prompts.PET_LABELS).
 VLM_CLASS_NAMES = ["eating", "drinking", "active", "resting", "unknown"]
+VLM_CLASS_NAMES_PET = VLM_CLASS_NAMES + ["defecating"]
 MANUAL_CLASS_NAMES = ["grooming", "others", "defecating", "stand"]
-CLASS_NAMES = VLM_CLASS_NAMES + MANUAL_CLASS_NAMES
+
+
+def vlm_class_names(species):
+    return VLM_CLASS_NAMES_PET if species == "pet" else VLM_CLASS_NAMES
+
+
+def class_names(species):
+    """Label list for one species: model labels, then manual-only ones."""
+    vlm = vlm_class_names(species)
+    return vlm + [c for c in MANUAL_CLASS_NAMES if c not in vlm]
+
+
 SCHEMA_VERSION = "vlm-review-1"
 BROWSER_PROBE_MAX = 2000
 SCENE_RE = re.compile(r"^[\u3400-\u9fffA-Za-z0-9_]+$")
@@ -238,7 +251,9 @@ def load_doc(target, vid):
 
 def save_doc(target, doc):
     doc["schema_version"] = SCHEMA_VERSION
-    doc.setdefault("meta", {})["class_names"] = CLASS_NAMES
+    ctx = context(target) or {}
+    doc.setdefault("meta", {})["class_names"] = class_names(
+        ctx.get("species", "rabbit"))
     _write_json(os.path.join(_docs_dir(target), f"{doc['vid']}.json"), doc)
 
 
@@ -284,12 +299,13 @@ def compute_stats(target):
             info["duration"] += max(0.0, s["end"] - s["start"])
     for info in labels.values():
         info["duration"] = round(info["duration"], 1)
+    ctx = context(target) or {}
     return {
         "total_videos": total,
         "labeled_videos": sum(1 for d in docs.values() if d.get("segments")),
         "approved_videos": sum(1 for d in docs.values() if d.get("approved")),
         "labels": labels,
-        "class_names": list(CLASS_NAMES),
+        "class_names": class_names(ctx.get("species", "rabbit")),
     }
 
 

@@ -197,7 +197,7 @@ def aggregate():
         "species": _state["species"],
         "scene": (store.context(target) or {}).get("scene", ""),
         "n_videos": len(items),
-        "class_names": store.CLASS_NAMES,
+        "class_names": store.class_names(_state["species"]),
         "infer": review_infer.status(),
         "stats": store.compute_stats(target),
         "videos": items,
